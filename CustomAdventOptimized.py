@@ -88,4 +88,4 @@ start_time = time.perf_counter()
 print('Part One:', part_one())
 end_time = time.perf_counter()
 elapsed_time = end_time - start_time
-print(f"Function 'part_one' took {elapsed_time:.4f} seconds to run.")
+print(f"{elapsed_time:.4f} seconds")
