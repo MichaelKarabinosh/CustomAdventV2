@@ -35,6 +35,7 @@ def generate_relative_list(pattern):
                 start_y = y
                 start_x = x
 
+
     for y in range(length_y):
         for x in range(length_x):
             if pattern[y][x] == "1":
@@ -59,7 +60,7 @@ def part_one():
     info = create_garden()
     for i in range(len(newlines)):
         days = info[i][3]
-        weeds = {(info[i][1][0],info[i][1][1])}
+        weeds = {(info[i][1][1],info[i][1][0])}
         weeds_now = set(weeds)
         rel_list = info[i][2]
         for day in range(days):
@@ -72,7 +73,7 @@ def part_one():
                 break
         counter += weeds_now_len
     return counter
-# print(create_garden())
+
 
 start_time = time.perf_counter()
 print('Part One:', part_one())

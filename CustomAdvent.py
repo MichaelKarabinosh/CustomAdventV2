@@ -66,6 +66,7 @@ def count_weeds(grid):
 
 def part_one():
     total_weeds = 0
+    arr = []
     for line in newlines:
         info = line.split("|")
         grid_size = info[0].strip()
@@ -79,6 +80,7 @@ def part_one():
         rel_list = create_infection(info[2].strip())
         num_days = int(info[3].strip())
         # print(print_grid(grid), "Day 0")
+        # print("\n")
         prev_weeds = 0
         for day in range(num_days):
             # print(rel_list)
@@ -87,9 +89,13 @@ def part_one():
             current_weeds = count_weeds(grid)
             if current_weeds == prev_weeds:
                 break
+            grid[initial_pos_y][initial_pos_x] = "L"
             # print(print_grid(grid), "Day {}".format(day + 1))
             # print('\n')
+            grid[initial_pos_y][initial_pos_x] = "W"
         total_weeds += current_weeds
-    return total_weeds
+        arr.append((total_weeds,day,info))
+    return arr
+
 print('Part One:', part_one())
 
