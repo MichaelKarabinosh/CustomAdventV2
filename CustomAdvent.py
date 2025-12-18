@@ -87,9 +87,9 @@ def part_one():
             current_weeds = count_weeds(grid)
             if current_weeds == prev_weeds:
                 break
+            # print(print_grid(grid), "Day {}".format(day + 1))
+            # print('\n')
         total_weeds += current_weeds
     return total_weeds
-        # print(print_grid(grid), "Day {}".format(day+1))
-        # print('\n')
 print('Part One:', part_one())
 
