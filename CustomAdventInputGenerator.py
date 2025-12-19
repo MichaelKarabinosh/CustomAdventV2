@@ -3,9 +3,9 @@ import subprocess
 import sys
 
 def generate_grid_size():
-    grid_size_1 = random.randint(60, 80)
-    # grid_size_2 = grid_size_1 - random.randint(-5, 15)
-    grid_size_2 = grid_size_1
+    grid_size_1 = random.randint(40, 70)
+    grid_size_2 = grid_size_1 - random.randint(-5, 15)
+    # grid_size_2 = grid_size_1
     str1 = str(grid_size_1) + "x" + str(grid_size_2)
     return str1
 
@@ -33,6 +33,8 @@ def generate_pattern():
     return super_str[:-1]
 
 def generate_days():
+    if random.random() > 0.7:
+        return random.randint(int(1e8),int(1e11))
     return random.randint(25, 125)
 
 

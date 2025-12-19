@@ -1,4 +1,6 @@
 import copy
+import math
+from platform import win32_edition
 
 newlines = []
 with open('InputFile', 'r') as file:
@@ -64,10 +66,14 @@ def count_weeds(grid):
     return counter
 
 
+
+
 def part_one():
+    weeds_2 = []
     total_weeds = 0
     arr = []
     for line in newlines:
+        weeds_1 = []
         info = line.split("|")
         grid_size = info[0].strip()
         grid1,grid2 = map(int,grid_size.split("x"))
@@ -93,9 +99,72 @@ def part_one():
             # print(print_grid(grid), "Day {}".format(day + 1))
             # print('\n')
             grid[initial_pos_y][initial_pos_x] = "W"
+            weeds_1.append(current_weeds)
+        weeds_2.append((weeds_1,num_days))
         total_weeds += current_weeds
-        arr.append((total_weeds,day,info))
-    return arr
+    return weeds_2,total_weeds
 
-print('Part One:', part_one())
 
+
+def part_two(part_1): # IMPORTANT THAT CHAR MUST BE IN THE MIDDLE BECAUSE IF NOT DATA IS SKEWED
+    p2_counter = 0
+    part_1_0 = part_1[0]
+    for row in part_1_0:
+        weed_counts = row[0]
+        days = row[1]
+        # print(weed_counts)
+        roc_weeds = []
+        for i in range(10):
+            roc_weeds.append(weed_counts[i] - weed_counts[i-1])
+
+
+        roc_roc_weeds = []
+        for i in range(10):
+            roc_roc_weeds.append((roc_weeds[i] - roc_weeds[i-1]))
+
+        roc_roc_weeds = roc_roc_weeds[2:]
+        roc_weeds = roc_weeds[1:]
+
+        # print(weed_counts)
+        # print(roc_weeds)
+        print(roc_roc_weeds)
+
+        found = False
+        counter = 0
+        while not found:
+            if roc_roc_weeds[counter] == roc_roc_weeds[counter+1]:
+                found = True
+            else:
+                counter += 1
+
+
+        start_number = weed_counts[counter+2] # an^2 + bn + c
+        slope = roc_roc_weeds[counter]
+        # print(slope,'ho')
+        a0, a1, a2 = weed_counts[counter], weed_counts[counter+1], weed_counts[counter+2]
+        a = (a2 - 2 * a1 + a0) / 2
+        b = a1 - a0 - a
+        c = a0
+
+        actual_days = days -(counter+1)
+        # print(a,b,c)
+
+        num = a * (actual_days**2) + b*actual_days + c
+        p2_counter += num
+    return p2_counter
+
+part_one1 = part_one()
+weed_count = part_one1[1]
+print('Part One:',weed_count)
+print('Part Two:', int(part_two(part_one1)))
+
+
+# counter = 0
+# for l in roc_roc_weeds:
+#     if l == 4:
+#         counter += 1
+# print(counter)
+#
+# print('Part One:', part_1[1][:])
+# print('ROC Weeds:', roc_weeds[1:])
+# print('ROC Roc Weeds:', roc_roc_weeds[2:])
