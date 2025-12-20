@@ -96,8 +96,8 @@ def part_one():
             if current_weeds == prev_weeds:
                 break
             grid[initial_pos_y][initial_pos_x] = "L"
-            # print(print_grid(grid), "Day {}".format(day + 1))
-            # print('\n')
+            print(print_grid(grid), "Day {}".format(day + 1))
+            print('\n')
             grid[initial_pos_y][initial_pos_x] = "W"
             weeds_1.append(current_weeds)
         weeds_2.append((weeds_1,num_days))
@@ -125,8 +125,8 @@ def part_two(part_1): # IMPORTANT THAT CHAR MUST BE IN THE MIDDLE BECAUSE IF NOT
         roc_roc_weeds = roc_roc_weeds[2:]
         roc_weeds = roc_weeds[1:]
 
-        # print(weed_counts)
-        # print(roc_weeds)
+        print(weed_counts)
+        print(roc_weeds)
         print(roc_roc_weeds)
 
         found = False
