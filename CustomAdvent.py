@@ -1,6 +1,8 @@
 import copy
 import math
 from platform import win32_edition
+import itertools
+from math import gcd
 
 newlines = []
 with open('InputFile', 'r') as file:
@@ -65,6 +67,55 @@ def count_weeds(grid):
         counter += row.count("W")
     return counter
 
+def line_key(p1, p2):
+    x1, y1 = p1
+    x2, y2 = p2
+
+    A = y2 - y1
+    B = x1 - x2
+    C = x2*y1 - x1*y2
+
+    g = gcd(gcd(abs(A), abs(B)), abs(C))
+    if g:
+        A //= g
+        B //= g
+        C //= g
+
+    # fix sign so representation is unique
+    if A < 0 or (A == 0 and B < 0):
+        A = -A
+        B = -B
+        C = -C
+    if A == 0 and B == 0 and C == 0:
+        return None
+
+    return (A, B, C)
+
+
+def sub_part_two(rel_list):
+    combos = list(itertools.permutations(rel_list, 2))
+    print(combos)
+    slope_set = set()
+    unique = set()
+    for combo in combos:
+        combo1, combo2 = combo
+        combo1x, combo1y = combo1
+        combo2x, combo2y = combo2
+        combo_x_updated = combo1x + combo2x
+        combo_y_updated = combo1y + combo2y
+        if combo_x_updated != 0:
+            slope_set.add(combo_y_updated/combo_x_updated)
+        else:
+            slope_set.add('inf')
+        # print(combo1, combo_updated,combo2)
+        # all_lines = line_key(combo1, combo_updated)
+        # if all_lines is not None:
+        #     unique.add(line_key(combo1, combo_updated))
+        # print(unique)
+
+    # print(unique,len(unique))
+    print(slope_set, len(slope_set),"slopeset")
+
 
 
 
@@ -84,6 +135,8 @@ def part_one():
         grid[initial_pos_y][initial_pos_x] = "W"
 
         rel_list = create_infection(info[2].strip())
+        sub_grid = sub_part_two(rel_list)
+
         num_days = int(info[3].strip())
         # print(print_grid(grid), "Day 0")
         # print("\n")
@@ -96,8 +149,8 @@ def part_one():
             if current_weeds == prev_weeds:
                 break
             grid[initial_pos_y][initial_pos_x] = "L"
-            print(print_grid(grid), "Day {}".format(day + 1))
-            print('\n')
+            # print(print_grid(grid), "Day {}".format(day + 1))
+            # print('\n')
             grid[initial_pos_y][initial_pos_x] = "W"
             weeds_1.append(current_weeds)
         weeds_2.append((weeds_1,num_days))
@@ -114,12 +167,12 @@ def part_two(part_1): # IMPORTANT THAT CHAR MUST BE IN THE MIDDLE BECAUSE IF NOT
         days = row[1]
         # print(weed_counts)
         roc_weeds = []
-        for i in range(10):
+        for i in range(20):
             roc_weeds.append(weed_counts[i] - weed_counts[i-1])
 
 
         roc_roc_weeds = []
-        for i in range(10):
+        for i in range(20):
             roc_roc_weeds.append((roc_weeds[i] - roc_weeds[i-1]))
 
         roc_roc_weeds = roc_roc_weeds[2:]
@@ -157,7 +210,6 @@ part_one1 = part_one()
 weed_count = part_one1[1]
 print('Part One:',weed_count)
 print('Part Two:', int(part_two(part_one1)))
-
 
 # counter = 0
 # for l in roc_roc_weeds:
