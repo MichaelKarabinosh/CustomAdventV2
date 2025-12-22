@@ -3,15 +3,15 @@ import subprocess
 import sys
 
 def generate_grid_size():
-    grid_size_1 = random.randint(40, 70)
+    grid_size_1 = random.randint(55, 85)
     grid_size_2 = grid_size_1 - random.randint(-5, 15)
     # grid_size_2 = grid_size_1
     str1 = str(grid_size_1) + "x" + str(grid_size_2)
     return str1
 
 def generate_position(grid_size_1, grid_size_2):
-    position_x = random.randint(int(grid_size_1/2) - 5, int(grid_size_1/2) + 5)
-    position_y = random.randint(int(grid_size_2/2) - 5, int(grid_size_2/2) + 5)
+    position_x = random.randint(int(grid_size_1/2) - 3, int(grid_size_1/2) + 3)
+    position_y = random.randint(int(grid_size_2/2) - 3, int(grid_size_2/2) + 3)
     return str(position_x) + "," +  str(position_y)
 
 def weighted_infection():
@@ -48,7 +48,7 @@ def create_line():
     line += " " + str(generate_days())
     return line
 
-num_lines = 100
+num_lines = 10
 with open("InputFile", "r") as f:
     lines = f.readlines()
     remaining_lines = lines[num_lines:]

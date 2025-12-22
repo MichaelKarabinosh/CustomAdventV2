@@ -93,7 +93,7 @@ def line_key(p1, p2):
 
 
 def sub_part_two(rel_list):
-    combos = list(itertools.permutations(rel_list, 2))
+    combos = list(itertools.combinations(rel_list, 2))
     print(combos)
     slope_set = set()
     unique = set()
@@ -103,6 +103,7 @@ def sub_part_two(rel_list):
         combo2x, combo2y = combo2
         combo_x_updated = combo1x + combo2x
         combo_y_updated = combo1y + combo2y
+        print(combo_x_updated, combo_y_updated,combo1x, combo1y, combo2x, combo2y)
         if combo_x_updated != 0:
             slope_set.add(combo_y_updated/combo_x_updated)
         else:
@@ -159,20 +160,24 @@ def part_one():
 
 
 
+
+
+
+
+
 def part_two(part_1): # IMPORTANT THAT CHAR MUST BE IN THE MIDDLE BECAUSE IF NOT DATA IS SKEWED
     p2_counter = 0
     part_1_0 = part_1[0]
     for row in part_1_0:
         weed_counts = row[0]
         days = row[1]
-        # print(weed_counts)
         roc_weeds = []
-        for i in range(20):
+        for i in range(10):
             roc_weeds.append(weed_counts[i] - weed_counts[i-1])
 
 
         roc_roc_weeds = []
-        for i in range(20):
+        for i in range(10):
             roc_roc_weeds.append((roc_weeds[i] - roc_weeds[i-1]))
 
         roc_roc_weeds = roc_roc_weeds[2:]
@@ -190,9 +195,6 @@ def part_two(part_1): # IMPORTANT THAT CHAR MUST BE IN THE MIDDLE BECAUSE IF NOT
             else:
                 counter += 1
 
-
-        start_number = weed_counts[counter+2] # an^2 + bn + c
-        slope = roc_roc_weeds[counter]
         # print(slope,'ho')
         a0, a1, a2 = weed_counts[counter], weed_counts[counter+1], weed_counts[counter+2]
         a = (a2 - 2 * a1 + a0) / 2
@@ -200,7 +202,7 @@ def part_two(part_1): # IMPORTANT THAT CHAR MUST BE IN THE MIDDLE BECAUSE IF NOT
         c = a0
 
         actual_days = days -(counter+1)
-        # print(a,b,c)
+        print(a,b,c)
 
         num = a * (actual_days**2) + b*actual_days + c
         p2_counter += num
@@ -210,13 +212,3 @@ part_one1 = part_one()
 weed_count = part_one1[1]
 print('Part One:',weed_count)
 print('Part Two:', int(part_two(part_one1)))
-
-# counter = 0
-# for l in roc_roc_weeds:
-#     if l == 4:
-#         counter += 1
-# print(counter)
-#
-# print('Part One:', part_1[1][:])
-# print('ROC Weeds:', roc_weeds[1:])
-# print('ROC Roc Weeds:', roc_roc_weeds[2:])
