@@ -67,47 +67,47 @@ def count_weeds(grid):
         counter += row.count("W")
     return counter
 
-def line_key(p1, p2):
-    x1, y1 = p1
-    x2, y2 = p2
+# def line_key(p1, p2):
+#     x1, y1 = p1
+#     x2, y2 = p2
+#
+#     A = y2 - y1
+#     B = x1 - x2
+#     C = x2*y1 - x1*y2
+#
+#     g = gcd(gcd(abs(A), abs(B)), abs(C))
+#     if g:
+#         A //= g
+#         B //= g
+#         C //= g
+#
+#     # fix sign so representation is unique
+#     if A < 0 or (A == 0 and B < 0):
+#         A = -A
+#         B = -B
+#         C = -C
+#     if A == 0 and B == 0 and C == 0:
+#         return None
+#
+#     return (A, B, C)
 
-    A = y2 - y1
-    B = x1 - x2
-    C = x2*y1 - x1*y2
 
-    g = gcd(gcd(abs(A), abs(B)), abs(C))
-    if g:
-        A //= g
-        B //= g
-        C //= g
-
-    # fix sign so representation is unique
-    if A < 0 or (A == 0 and B < 0):
-        A = -A
-        B = -B
-        C = -C
-    if A == 0 and B == 0 and C == 0:
-        return None
-
-    return (A, B, C)
-
-
-def sub_part_two(rel_list):
-    combos = list(itertools.combinations(rel_list, 2))
-    print(combos)
-    slope_set = set()
-    unique = set()
-    for combo in combos:
-        combo1, combo2 = combo
-        combo1x, combo1y = combo1
-        combo2x, combo2y = combo2
-        combo_x_updated = combo1x + combo2x
-        combo_y_updated = combo1y + combo2y
-        print(combo_x_updated, combo_y_updated,combo1x, combo1y, combo2x, combo2y)
-        if combo_x_updated != 0:
-            slope_set.add(combo_y_updated/combo_x_updated)
-        else:
-            slope_set.add('inf')
+# def sub_part_two(rel_list):
+#     combos = list(itertools.combinations(rel_list, 2))
+#     print(combos)
+#     slope_set = set()
+#     unique = set()
+#     for combo in combos:
+#         combo1, combo2 = combo
+#         combo1x, combo1y = combo1
+#         combo2x, combo2y = combo2
+#         combo_x_updated = combo1x + combo2x
+#         combo_y_updated = combo1y + combo2y
+#         print(combo_x_updated, combo_y_updated,combo1x, combo1y, combo2x, combo2y)
+#         if combo_x_updated != 0:
+#             slope_set.add(combo_y_updated/combo_x_updated)
+#         else:
+#             slope_set.add('inf')
         # print(combo1, combo_updated,combo2)
         # all_lines = line_key(combo1, combo_updated)
         # if all_lines is not None:
@@ -115,7 +115,7 @@ def sub_part_two(rel_list):
         # print(unique)
 
     # print(unique,len(unique))
-    print(slope_set, len(slope_set),"slopeset")
+    # print(slope_set, len(slope_set),"slopeset")
 
 
 
@@ -125,7 +125,7 @@ def part_one():
     total_weeds = 0
     arr = []
     for line in newlines:
-        weeds_1 = []
+        weeds_1 = [1]
         info = line.split("|")
         grid_size = info[0].strip()
         grid1,grid2 = map(int,grid_size.split("x"))
@@ -136,7 +136,6 @@ def part_one():
         grid[initial_pos_y][initial_pos_x] = "W"
 
         rel_list = create_infection(info[2].strip())
-        sub_grid = sub_part_two(rel_list)
 
         num_days = int(info[3].strip())
         # print(print_grid(grid), "Day 0")
@@ -163,37 +162,38 @@ def part_one():
 
 
 
-
-
 def part_two(part_1): # IMPORTANT THAT CHAR MUST BE IN THE MIDDLE BECAUSE IF NOT DATA IS SKEWED
     p2_counter = 0
     part_1_0 = part_1[0]
+    infection_counter = 1
     for row in part_1_0:
         weed_counts = row[0]
         days = row[1]
         roc_weeds = []
-        for i in range(10):
+        for i in range(15):
             roc_weeds.append(weed_counts[i] - weed_counts[i-1])
 
 
         roc_roc_weeds = []
-        for i in range(10):
+        for i in range(15):
             roc_roc_weeds.append((roc_weeds[i] - roc_weeds[i-1]))
 
         roc_roc_weeds = roc_roc_weeds[2:]
-        roc_weeds = roc_weeds[1:]
+        # roc_weeds = roc_weeds[1:]
 
-        print(weed_counts)
-        print(roc_weeds)
+        print(weed_counts) # uncomment to view debug info on weed data
+        # print(roc_weeds)
         print(roc_roc_weeds)
+        print('index', infection_counter)
+        infection_counter += 1
+        print(max(roc_roc_weeds),'max')
 
-        found = False
+
         counter = 0
-        while not found:
-            if roc_roc_weeds[counter] == roc_roc_weeds[counter+1]:
-                found = True
-            else:
-                counter += 1
+        for i in range(len(roc_roc_weeds)-3):
+            if roc_roc_weeds[i] == roc_roc_weeds[i+1] == roc_roc_weeds[i+2] == roc_roc_weeds[i+3]:
+                counter = i
+                break
 
         # print(slope,'ho')
         a0, a1, a2 = weed_counts[counter], weed_counts[counter+1], weed_counts[counter+2]
@@ -201,8 +201,8 @@ def part_two(part_1): # IMPORTANT THAT CHAR MUST BE IN THE MIDDLE BECAUSE IF NOT
         b = a1 - a0 - a
         c = a0
 
-        actual_days = days -(counter+1)
-        print(a,b,c)
+        actual_days = days - counter
+        # print(a,b,c) # uncomment to view quadratic
 
         num = a * (actual_days**2) + b*actual_days + c
         p2_counter += num
