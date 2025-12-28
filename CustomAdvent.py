@@ -40,6 +40,7 @@ def create_infection(infection_pattern):
     return relative_list
 
 def do_day(rel_list, grid):
+    overlap_counter = 0
     copied_array = copy.deepcopy(grid)
     for i in range(len(grid)):
         row = grid[i]
@@ -50,8 +51,10 @@ def do_day(rel_list, grid):
                     positions_y = positions[1]
                     # print(positions_x, positions_y)
                     if (len(grid)-1 >= i - positions_y >= 0) and (len(row)-1 >= j + positions_x >= 0):
+                        if grid[i-positions_y][j+positions_x] == "W":
+                            overlap_counter += 1
                         copied_array[i-positions_y][j+positions_x] = "W"
-    return copied_array
+    return copied_array,overlap_counter
 
 def print_grid(grid):
     result_strings = []
@@ -117,15 +120,76 @@ def count_weeds(grid):
     # print(unique,len(unique))
     # print(slope_set, len(slope_set),"slopeset")
 
+def do_one_line(line):
+    num_weeds = [1]
+    overlaps = [0]
+    info = line.split("|")
+
+    grid_size = info[0].strip()
+    gridx,gridy = map(int, grid_size.split("x"))
+    grid = create_grid(gridx,gridy)
+
+    initial_pos = info[1].strip()
+    initial_pos_x, initial_pos_y = map(int,initial_pos.split(","))
+    grid[initial_pos_y][initial_pos_x] = "W"
+
+    rel_list = create_infection(info[2].strip())
+    num_days = int(info[3].strip())
+
+    # print(print_grid(grid), "Day 0")
+    # print("\n")
+
+    for day in range(num_days):
+        prev_weeds = count_weeds(grid)
+        day_info = do_day(rel_list, grid)
+        grid = day_info[0]
+        # print(print_grid(grid), "Day {}".format(day + 1))
+        # print('\n')
+        num_overlaps = day_info[1]
+        curr_weeds = count_weeds(grid)
+        if curr_weeds == prev_weeds:
+            break
+        num_weeds.append(curr_weeds)
+        overlaps.append(num_overlaps)
+    return num_weeds[-1], num_weeds, overlaps
+
+def create_diff_lists(orig):
+    first_diff = []
+    second_diff = []
+    for i in range(len(orig)-1):
+        first_diff.append(orig[i] - orig[i - 1])
+    for i in range(len(first_diff)-1):
+        second_diff.append(first_diff[i + 1] - first_diff[i])
+
+    return first_diff, second_diff
+
+
+def part_one_new():
+    part_one_counter = 0
+    for line in newlines:
+        num_weeds, weeds_list, overlaps_list = do_one_line(line)
+        print('weeds', weeds_list,len(weeds_list))
+        print('overlaps', overlaps_list,len(overlaps_list))
+        lists_weeds = create_diff_lists(weeds_list)
+        lists_overlaps = create_diff_lists(overlaps_list)
+        print('first_diff_weeds', lists_weeds[0])
+        print('second_diff_weeds', lists_weeds[1])
+        print('first_diff_overlaps', lists_overlaps[0])
+        print('second_diff_overlaps', lists_overlaps[1],'\n')
+
+        part_one_counter += num_weeds
+    return part_one_counter
 
 
 
 def part_one():
     weeds_2 = []
+    overlap_counter = 0
     total_weeds = 0
     arr = []
     for line in newlines:
         weeds_1 = [1]
+        overlaps = []
         info = line.split("|")
         grid_size = info[0].strip()
         grid1,grid2 = map(int,grid_size.split("x"))
@@ -144,7 +208,9 @@ def part_one():
         for day in range(num_days):
             # print(rel_list)
             prev_weeds = count_weeds(grid)
-            grid = do_day(rel_list, grid)
+            grid_sub = do_day(rel_list, grid)
+            grid = grid_sub[0]
+            overlaps.append(grid_sub[1])
             current_weeds = count_weeds(grid)
             if current_weeds == prev_weeds:
                 break
@@ -153,9 +219,10 @@ def part_one():
             # print('\n')
             grid[initial_pos_y][initial_pos_x] = "W"
             weeds_1.append(current_weeds)
+
         weeds_2.append((weeds_1,num_days))
         total_weeds += current_weeds
-    return weeds_2,total_weeds
+    return weeds_2,total_weeds,overlaps
 
 
 
@@ -184,6 +251,7 @@ def part_two(part_1): # IMPORTANT THAT CHAR MUST BE IN THE MIDDLE BECAUSE IF NOT
         print(weed_counts) # uncomment to view debug info on weed data
         # print(roc_weeds)
         print(roc_roc_weeds)
+        print(part_1[2],'overlaps')
         print('index', infection_counter)
         infection_counter += 1
         print(max(roc_roc_weeds),'max')
@@ -208,7 +276,8 @@ def part_two(part_1): # IMPORTANT THAT CHAR MUST BE IN THE MIDDLE BECAUSE IF NOT
         p2_counter += num
     return p2_counter
 
-part_one1 = part_one()
-weed_count = part_one1[1]
-print('Part One:',weed_count)
-print('Part Two:', int(part_two(part_one1)))
+# part_one1 = part_one()
+# weed_count = part_one1[1]
+# print('Part One:',weed_count)
+# print('Part Two:', int(part_two(part_one1)))
+print(part_one_new(), 'Part One')
