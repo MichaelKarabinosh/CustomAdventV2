@@ -3,6 +3,7 @@ import math
 from platform import win32_edition
 import itertools
 from math import gcd
+import pprint
 
 newlines = []
 with open('InputFile', 'r') as file:
@@ -39,8 +40,16 @@ def create_infection(infection_pattern):
 
     return relative_list
 
+def convert_O_W(grid):
+    for i in range(len(grid)):
+        for j in range(len(grid[i])):
+            if grid[i][j] == "O":
+                grid[i][j] = "W"
+    return grid
+
 def do_day(rel_list, grid):
     overlap_counter = 0
+    set_unique_weeds = {0}
     copied_array = copy.deepcopy(grid)
     for i in range(len(grid)):
         row = grid[i]
@@ -51,9 +60,12 @@ def do_day(rel_list, grid):
                     positions_y = positions[1]
                     # print(positions_x, positions_y)
                     if (len(grid)-1 >= i - positions_y >= 0) and (len(row)-1 >= j + positions_x >= 0):
-                        if grid[i-positions_y][j+positions_x] == "W":
+                        if copied_array[i-positions_y][j+positions_x] == "O":
+                            # print(i-positions_y, j+positions_x)
                             overlap_counter += 1
-                        copied_array[i-positions_y][j+positions_x] = "W"
+                        elif copied_array[i-positions_y][j+positions_x] == "X": copied_array[i - positions_y][j + positions_x] = "O"
+    print(print_grid(copied_array),'\n')
+    copied_array = convert_O_W(copied_array)
     return copied_array,overlap_counter
 
 def print_grid(grid):
@@ -68,6 +80,7 @@ def count_weeds(grid):
     counter = 0
     for row in grid:
         counter += row.count("W")
+        counter += row.count("O")
     return counter
 
 # def line_key(p1, p2):
@@ -122,7 +135,7 @@ def count_weeds(grid):
 
 def do_one_line(line):
     num_weeds = [1]
-    overlaps = [0]
+    overlaps = []
     info = line.split("|")
 
     grid_size = info[0].strip()
@@ -143,12 +156,14 @@ def do_one_line(line):
         prev_weeds = count_weeds(grid)
         day_info = do_day(rel_list, grid)
         grid = day_info[0]
-        # print(print_grid(grid), "Day {}".format(day + 1))
-        # print('\n')
         num_overlaps = day_info[1]
         curr_weeds = count_weeds(grid)
         if curr_weeds == prev_weeds:
             break
+        grid[initial_pos_y][initial_pos_x] = "L"
+        print(print_grid(grid), "Day {}".format(day + 1))
+        print('\n')
+        grid[initial_pos_y][initial_pos_x] = "W"
         num_weeds.append(curr_weeds)
         overlaps.append(num_overlaps)
     return num_weeds[-1], num_weeds, overlaps
@@ -169,13 +184,13 @@ def part_one_new():
     for line in newlines:
         num_weeds, weeds_list, overlaps_list = do_one_line(line)
         print('weeds', weeds_list,len(weeds_list))
-        print('overlaps', overlaps_list,len(overlaps_list))
+        print('GROWTH_overlaps', overlaps_list,len(overlaps_list))
         lists_weeds = create_diff_lists(weeds_list)
         lists_overlaps = create_diff_lists(overlaps_list)
         print('first_diff_weeds', lists_weeds[0])
         print('second_diff_weeds', lists_weeds[1])
-        print('first_diff_overlaps', lists_overlaps[0])
-        print('second_diff_overlaps', lists_overlaps[1],'\n')
+        print('first_diff_GROWTH_overlaps', lists_overlaps[0])
+        print('second_diff_GROWTH_overlaps', lists_overlaps[1],'\n')
 
         part_one_counter += num_weeds
     return part_one_counter
@@ -276,8 +291,8 @@ def part_two(part_1): # IMPORTANT THAT CHAR MUST BE IN THE MIDDLE BECAUSE IF NOT
         p2_counter += num
     return p2_counter
 
-# part_one1 = part_one()
-# weed_count = part_one1[1]
-# print('Part One:',weed_count)
-# print('Part Two:', int(part_two(part_one1)))
+part_one1 = part_one()
+weed_count = part_one1[1]
+print('Part One:',weed_count)
+print('Part Two:', int(part_two(part_one1)))
 print(part_one_new(), 'Part One')

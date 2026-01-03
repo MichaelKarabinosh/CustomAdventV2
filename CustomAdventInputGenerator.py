@@ -86,8 +86,35 @@ patterns = []
 for combo in combinations(positions, 3):
     patterns.append(make_pattern(combo))
 
-print(len(patterns))  # 2024
-
+# print(len(patterns))  # 2024
+#
+# def make_patterns():
+#     patterns = []
+#
+#     # list all non-center cells
+#     cells = []
+#     for r in range(5):
+#         for c in range(5):
+#             if (r, c) != (2, 2):
+#                 cells.append((r, c))
+#
+#     # generate all 3-cell combinations
+#     for i in range(len(cells)):
+#         for j in range(i + 1, len(cells)):
+#             for k in range(j + 1, len(cells)):
+#                 patterns.append((cells[i], cells[j], cells[k]))
+#     return patterns
+#
+# def to_grid(triple):
+#     grid = [["0"] * 5 for _ in range(5)]
+#     grid[2][2] = "W"
+#     for r, c in triple:
+#         grid[r][c] = "1"
+#     return ",".join("".join(row) for row in grid)
+#
+# def make_2024(patterns):
+#     grids = [to_grid(t) for t in patterns]
+#     return grids
 
 
 num_lines = 2024
