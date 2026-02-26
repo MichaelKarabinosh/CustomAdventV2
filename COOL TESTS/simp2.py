@@ -8,7 +8,8 @@ from matplotlib.patches import Patch
 # ===============================
 # INPUT
 # ===============================
-INPUT_LINE = "50x50 | 25,25 | 11000,00000,00W00,10000,00000 | 90"
+with open("../InputFile", "r") as f:
+    INPUT_LINE = f.readline().strip()
 
 # ===============================
 # SIMULATION
@@ -41,6 +42,13 @@ def simulate(grid, rel_list, days):
     new_masks = []
     overlap_masks = []
     growth_overlap_masks = []
+
+    # ===== STORE DAY 0 FIRST =====
+    grids.append(grid.copy())
+    weed_counts.append(int(np.sum(grid)))
+    new_masks.append(np.zeros_like(grid))
+    overlap_masks.append(np.zeros_like(grid))
+    growth_overlap_masks.append(np.zeros_like(grid))
 
     for _ in range(days):
         growth_counter = np.zeros_like(grid)
@@ -107,6 +115,7 @@ days = int(info[3].strip())
 
 grid = create_grid(gridx, gridy)
 grid[init_y, init_x] = 1
+center_pos = (init_y, init_x)
 
 grids, weed_counts, new_masks, overlap_masks, growth_overlap_masks = simulate(grid, rel_list, days)
 growth_overlap_counts = [
@@ -142,14 +151,15 @@ class InfectionGUI:
         self.ax_grid = self.fig.add_axes([0.05, 0.15, 0.60, 0.80])
 
         self.cmap = ListedColormap([
-            "black",       # 0 empty
-            "#ff4500",     # 1 old
-            "#ffff00",     # 2 new
-            "#00ffff",     # 3 overlap
-            "#ff00ff"      # 4 growth overlap
+            "black",  # 0 empty
+            "#ff4500",  # 1 old
+            "#ffff00",  # 2 new
+            "#00ffff",  # 3 overlap
+            "#ff00ff",  # 4 growth overlap
+            "#ffffff"  # 5 center
         ])
 
-        self.im = self.ax_grid.imshow(grids[0], cmap=self.cmap, vmin=0, vmax=4)
+        self.im = self.ax_grid.imshow(grids[0], cmap=self.cmap, vmin=0, vmax=5)
         self.ax_grid.set_xticks([])
         self.ax_grid.set_yticks([])
         self.ax_grid.set_title("Day 0")
@@ -255,16 +265,26 @@ class InfectionGUI:
         self.draw_frame()
 
     def draw_frame(self):
-        base = grids[self.index].copy()
+        base = np.zeros_like(grids[self.index])
 
+        # Paint all weeds
+        base[grids[self.index] == 1] = 1
+
+        # Mark center specially
+        cy, cx = center_pos
+        if grids[self.index][cy, cx] == 1:
+            base[cy, cx] = 5
+
+        # New cells (correct definition)
         if self.show_new and self.index > 0:
             prev = grids[self.index - 1]
             curr = grids[self.index]
-
             new_cells = (curr == 1) & (prev == 0)
             base[new_cells] = 2
+
         if self.show_overlap:
             base[overlap_masks[self.index] == 1] = 3
+
         if self.show_growth_overlap:
             base[growth_overlap_masks[self.index] == 1] = 4
 
