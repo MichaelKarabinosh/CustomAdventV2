@@ -257,8 +257,12 @@ class InfectionGUI:
     def draw_frame(self):
         base = grids[self.index].copy()
 
-        if self.show_new:
-            base[new_masks[self.index] == 1] = 2
+        if self.show_new and self.index > 0:
+            prev = grids[self.index - 1]
+            curr = grids[self.index]
+
+            new_cells = (curr == 1) & (prev == 0)
+            base[new_cells] = 2
         if self.show_overlap:
             base[overlap_masks[self.index] == 1] = 3
         if self.show_growth_overlap:
