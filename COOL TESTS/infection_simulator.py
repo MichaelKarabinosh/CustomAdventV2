@@ -3,15 +3,15 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from matplotlib.widgets import Button, Slider, CheckButtons
 from matplotlib.colors import ListedColormap
-from matplotlib.patches import Patch
+
 
 # ===============================
 # INPUT
 # ===============================
-INPUT_LINE = "50x50 | 25,25 | 10000,00000,00W01,01000,00000 | 90"
+INPUT_LINE = "500x500 | 250,250 | 10000,00000,00W01,0101111111100,00000 | 90"
 
 # ===============================
-# SIMULATION
+# SIM
 # ===============================
 def create_grid(x, y):
     return np.zeros((y, x), dtype=int)
@@ -79,7 +79,7 @@ def compute_diffs(data, index):
     return first, second
 
 # ===============================
-# BUILD SIMULATION
+# BUILD SIM
 # ===============================
 info = INPUT_LINE.split("|")
 gridx, gridy = map(int, info[0].strip().split("x"))

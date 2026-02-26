@@ -64,7 +64,7 @@ def do_day(rel_list, grid):
                             # print(i-positions_y, j+positions_x)
                             overlap_counter += 1
                         elif copied_array[i-positions_y][j+positions_x] == "X": copied_array[i - positions_y][j + positions_x] = "O"
-    print(print_grid(copied_array),'\n')
+    # print(print_grid(copied_array),'\n')
     copied_array = convert_O_W(copied_array)
     return copied_array,overlap_counter
 
@@ -183,14 +183,15 @@ def part_one_new():
     part_one_counter = 0
     for line in newlines:
         num_weeds, weeds_list, overlaps_list = do_one_line(line)
-        print('weeds', weeds_list,len(weeds_list))
-        print('GROWTH_overlaps', overlaps_list,len(overlaps_list))
+        # print('weeds', weeds_list,len(weeds_list))
+        # print('GROWTH_overlaps', overlaps_list,len(overlaps_list))
         lists_weeds = create_diff_lists(weeds_list)
         lists_overlaps = create_diff_lists(overlaps_list)
-        print('first_diff_weeds', lists_weeds[0])
+        # print('first_diff_weeds', lists_weeds[0])
         print('second_diff_weeds', lists_weeds[1])
-        print('first_diff_GROWTH_overlaps', lists_overlaps[0])
-        print('second_diff_GROWTH_overlaps', lists_overlaps[1],'\n')
+        # print('first_diff_GROWTH_overlaps', lists_overlaps[0])
+        # print('second_diff_GROWTH_overlaps', lists_overlaps[1])
+        print(line,'\n')
 
         part_one_counter += num_weeds
     return part_one_counter
@@ -291,8 +292,8 @@ def part_two(part_1): # IMPORTANT THAT CHAR MUST BE IN THE MIDDLE BECAUSE IF NOT
         p2_counter += num
     return p2_counter
 
-part_one1 = part_one()
-weed_count = part_one1[1]
-print('Part One:',weed_count)
-print('Part Two:', int(part_two(part_one1)))
+# part_one1 = part_one()
+# weed_count = part_one1[1]
+# print('Part One:',weed_count)
+# print('Part Two:', int(part_two(part_one1)))
 print(part_one_new(), 'Part One')
