@@ -39,36 +39,35 @@ def create_infection(pattern):
 def simulate(grid, rel_list, days):
     grids = []
     weed_counts = []
-    new_masks = []
     overlap_masks = []
     growth_overlap_masks = []
+    growth_arrows = []
 
-    # ===== STORE DAY 0 FIRST =====
+    # ===== Day 0 =====
     grids.append(grid.copy())
     weed_counts.append(int(np.sum(grid)))
-    new_masks.append(np.zeros_like(grid))
     overlap_masks.append(np.zeros_like(grid))
     growth_overlap_masks.append(np.zeros_like(grid))
+    growth_arrows.append([])
 
     for _ in range(days):
         growth_counter = np.zeros_like(grid)
-        new_mask = np.zeros_like(grid)
         overlap_mask = np.zeros_like(grid)
         growth_overlap_mask = np.zeros_like(grid)
+        day_arrows = []
 
         weed_positions = np.argwhere(grid == 1)
 
-        # Count growth attempts
         for y, x in weed_positions:
             for dx, dy in rel_list:
                 ny = y - dy
                 nx = x + dx
                 if 0 <= ny < grid.shape[0] and 0 <= nx < grid.shape[1]:
                     growth_counter[ny, nx] += 1
+                    day_arrows.append(((y, x), (ny, nx)))
 
         new_grid = grid.copy()
 
-        # Apply growth
         for y in range(grid.shape[0]):
             for x in range(grid.shape[1]):
                 if growth_counter[y, x] > 0:
@@ -78,8 +77,6 @@ def simulate(grid, rel_list, days):
                         new_grid[y, x] = 1
                         if growth_counter[y, x] > 1:
                             growth_overlap_mask[y, x] = 1
-                        else:
-                            new_mask[y, x] = 1
 
         if np.array_equal(new_grid, grid):
             break
@@ -87,11 +84,11 @@ def simulate(grid, rel_list, days):
         grid = new_grid
         grids.append(grid.copy())
         weed_counts.append(int(np.sum(grid)))
-        new_masks.append(new_mask.copy())
         overlap_masks.append(overlap_mask.copy())
         growth_overlap_masks.append(growth_overlap_mask.copy())
+        growth_arrows.append(day_arrows)
 
-    return grids, weed_counts, new_masks, overlap_masks, growth_overlap_masks
+    return grids, weed_counts, overlap_masks, growth_overlap_masks, growth_arrows
 
 
 def compute_diffs(data, index):
@@ -115,9 +112,11 @@ days = int(info[3].strip())
 
 grid = create_grid(gridx, gridy)
 grid[init_y, init_x] = 1
+
 center_pos = (init_y, init_x)
 
-grids, weed_counts, new_masks, overlap_masks, growth_overlap_masks = simulate(grid, rel_list, days)
+grids, weed_counts, overlap_masks, growth_overlap_masks, growth_arrows = simulate(grid, rel_list, days)
+
 growth_overlap_counts = [
     int(np.sum(mask)) for mask in growth_overlap_masks
 ]
@@ -130,80 +129,51 @@ class InfectionGUI:
         self.index = 0
         self.running = False
         self.interval = 200
-        self.show_new = False
         self.show_overlap = False
         self.show_growth_overlap = False
+        self.show_arrows = False
+        self.arrow_artists = []
 
         self.fig = plt.figure(figsize=(16,9))
-        # Auto fullscreen (works for most backends)
-        manager = plt.get_current_fig_manager()
-        try:
-            manager.window.state('zoomed')  # Windows
-        except:
-            try:
-                manager.full_screen_toggle()  # Mac/Linux
-            except:
-                pass
-
-        # ===============================
-        # MAIN GRID
-        # ===============================
         self.ax_grid = self.fig.add_axes([0.05, 0.15, 0.60, 0.80])
 
         self.cmap = ListedColormap([
-            "black",  # 0 empty
-            "#ff4500",  # 1 old
-            "#ffff00",  # 2 new
-            "#00ffff",  # 3 overlap
-            "#ff00ff",  # 4 growth overlap
-            "#ffffff"  # 5 center
+            "black",      # 0 empty
+            "#ff4500",    # 1 old
+            "#00ffff",    # 2 overlap
+            "#ff00ff",    # 3 growth overlap
+            "#ffffff"     # 4 center
         ])
 
-        self.im = self.ax_grid.imshow(grids[0], cmap=self.cmap, vmin=0, vmax=5)
+        self.im = self.ax_grid.imshow(grids[0], cmap=self.cmap, vmin=0, vmax=4)
         self.ax_grid.set_xticks([])
         self.ax_grid.set_yticks([])
         self.ax_grid.set_title("Day 0")
 
-        legend_elements = [
-            Patch(facecolor="black", label="Empty"),
-            Patch(facecolor="#ff4500", label="Old"),
-            Patch(facecolor="#ffff00", label="New"),
-            Patch(facecolor="#00ffff", label="Overlap"),
-            Patch(facecolor="#ff00ff", label="Growth Overlap")
-        ]
-        self.ax_grid.legend(handles=legend_elements, loc="upper right")
-
-        # ===============================
-        # GRAPH
-        # ===============================
+        # Graph
         self.ax_plot = self.fig.add_axes([0.70, 0.62, 0.25, 0.26])
         self.line, = self.ax_plot.plot([], [])
         self.ax_plot.set_title("Weed Growth")
 
-        # ===============================
-        # TEXT
-        # ===============================
-        # Left stats
+        # Stats Left
         self.ax_text = self.fig.add_axes([0.70, 0.40, 0.12, 0.14])
         self.ax_text.axis("off")
-        self.text_display = self.ax_text.text(0, 0.5, "", fontsize=12)
+        self.text_left = self.ax_text.text(0, 0.5, "", fontsize=12)
 
-        # Right stats
-        self.ax_text_right = self.fig.add_axes([0.83, 0.40, 0.12, 0.14])
-        self.ax_text_right.axis("off")
-        self.ax_text_right_text = self.ax_text_right.text(0, 0.5, "", fontsize=12)
+        # Stats Right
+        self.ax_text_r = self.fig.add_axes([0.83, 0.40, 0.12, 0.14])
+        self.ax_text_r.axis("off")
+        self.text_right = self.ax_text_r.text(0, 0.5, "", fontsize=12)
 
-        # ===============================
-        # CHECKBOX
-        # ===============================
+        # Checkbox
         self.ax_check = self.fig.add_axes([0.70, 0.30, 0.25, 0.12])
         self.check = CheckButtons(
             self.ax_check,
-            ["Show New", "Show Overlap", "Show Growth Overlap"],
+            ["Show Overlap", "Show Growth Overlap", "Show Growth Arrows"],
             [False, False, False]
         )
 
-        # ===============================
+
         # CONTROLS
         # ===============================
         button_y = 0.03
@@ -212,8 +182,8 @@ class InfectionGUI:
         self.btn_back5 = Button(plt.axes([0.10, button_y, 0.05, button_h]), "<<")
         self.btn_back1 = Button(plt.axes([0.16, button_y, 0.05, button_h]), "<")
         self.btn_pause = Button(plt.axes([0.22, button_y, 0.08, button_h]), "Play")
-        self.btn_fwd1  = Button(plt.axes([0.31, button_y, 0.05, button_h]), ">")
-        self.btn_fwd5  = Button(plt.axes([0.37, button_y, 0.05, button_h]), ">>")
+        self.btn_fwd1 = Button(plt.axes([0.31, button_y, 0.05, button_h]), ">")
+        self.btn_fwd5 = Button(plt.axes([0.37, button_y, 0.05, button_h]), ">>")
         self.btn_reset = Button(plt.axes([0.44, button_y, 0.08, button_h]), "Reset")
 
         self.slider = Slider(
@@ -221,9 +191,6 @@ class InfectionGUI:
             "Speed (ms)", 10, 1000, valinit=200
         )
 
-        # ===============================
-        # BINDINGS
-        # ===============================
         self.btn_pause.on_clicked(self.toggle)
         self.btn_back1.on_clicked(lambda e: self.skip(-1))
         self.btn_fwd1.on_clicked(lambda e: self.skip(1))
@@ -240,14 +207,14 @@ class InfectionGUI:
 
     def toggle(self, event):
         self.running = not self.running
-        self.btn_pause.label.set_text("Play" if not self.running else "Pause")
+        self.btn_pause.label.set_text("Pause" if self.running else "Play")
 
     def skip(self, amount):
         self.running = False
-        self.index = max(0, min(len(grids)-1, self.index + amount))
+        self.index = max(0, min(len(grids) - 1, self.index + amount))
         self.draw_frame()
 
-    def reset(self, event):
+    def reset(self, event=None):
         self.running = False
         self.index = 0
         self.draw_frame()
@@ -259,71 +226,78 @@ class InfectionGUI:
 
     def toggle_options(self, label):
         status = self.check.get_status()
-        self.show_new = status[0]
-        self.show_overlap = status[1]
-        self.show_growth_overlap = status[2]
+        self.show_overlap = status[0]
+        self.show_growth_overlap = status[1]
+        self.show_arrows = status[2]
         self.draw_frame()
 
     def draw_frame(self):
         base = np.zeros_like(grids[self.index])
-
-        # Paint all weeds
         base[grids[self.index] == 1] = 1
 
-        # Mark center specially
+        # Mark center
         cy, cx = center_pos
-        if grids[self.index][cy, cx] == 1:
-            base[cy, cx] = 5
-
-        # New cells (correct definition)
-        if self.show_new and self.index > 0:
-            prev = grids[self.index - 1]
-            curr = grids[self.index]
-            new_cells = (curr == 1) & (prev == 0)
-            base[new_cells] = 2
+        base[cy, cx] = 4
 
         if self.show_overlap:
-            base[overlap_masks[self.index] == 1] = 3
+            base[overlap_masks[self.index] == 1] = 2
 
         if self.show_growth_overlap:
-            base[growth_overlap_masks[self.index] == 1] = 4
+            base[growth_overlap_masks[self.index] == 1] = 3
 
         self.im.set_array(base)
         self.ax_grid.set_title(f"Day {self.index}")
 
+        # Remove old arrows safely
+        for artist in self.arrow_artists:
+            artist.remove()
+        self.arrow_artists = []
+
+        # Draw arrows
+        if self.show_arrows and self.index > 0:
+            for (py, px), (cy, cx) in growth_arrows[self.index]:
+                arrow = self.ax_grid.arrow(
+                    px, py,
+                    cx - px,
+                    cy - py,
+                    head_width=0.3,
+                    head_length=0.3,
+                    fc="white",
+                    ec="white",
+                    alpha=0.5
+                )
+                self.arrow_artists.append(arrow)
+
+        # Graph
         self.line.set_data(range(self.index+1),
                            weed_counts[:self.index+1])
-
         self.ax_plot.set_xlim(0, max(10, self.index+1))
         self.ax_plot.set_ylim(0, max(weed_counts[:self.index+1]) * 1.1)
 
+        # Stats
         first, second = compute_diffs(weed_counts, self.index)
-
         go_count = growth_overlap_counts[self.index]
         go_first, go_second = compute_diffs(growth_overlap_counts, self.index)
 
-        left_text = (
+        self.text_left.set_text(
             f"Weeds: {weed_counts[self.index]}\n"
             f"First Diff: {first}\n"
             f"Second Diff: {second}"
         )
 
-        right_text = (
+        self.text_right.set_text(
             f"Growth Overlaps: {go_count}\n"
             f"First Diff: {go_first}\n"
             f"Second Diff: {go_second}"
         )
 
-        self.text_display.set_text(left_text)
-        self.ax_text_right_text.set_text(right_text)
-
         self.fig.canvas.draw_idle()
 
     def update(self, frame):
-        if not self.running or self.index >= len(grids):
+        if not self.running or self.index >= len(grids)-1:
             return
-        self.draw_frame()
         self.index += 1
+        self.draw_frame()
 
 
 InfectionGUI()

@@ -183,19 +183,64 @@ def part_one_new():
     part_one_counter = 0
     for line in newlines:
         num_weeds, weeds_list, overlaps_list = do_one_line(line)
-        # print('weeds', weeds_list,len(weeds_list))
+        print('weeds', weeds_list,len(weeds_list))
         # print('GROWTH_overlaps', overlaps_list,len(overlaps_list))
         lists_weeds = create_diff_lists(weeds_list)
         lists_overlaps = create_diff_lists(overlaps_list)
-        # print('first_diff_weeds', lists_weeds[0])
+        print('first_diff_weeds', lists_weeds[0])
         print('second_diff_weeds', lists_weeds[1])
         # print('first_diff_GROWTH_overlaps', lists_overlaps[0])
         # print('second_diff_GROWTH_overlaps', lists_overlaps[1])
         print(line,'\n')
 
         part_one_counter += num_weeds
+        a, b, c = fit_quadratic_from_sequence(weeds_list)
+
+        print("quadratic:", a, b, c)
     return part_one_counter
 
+
+def fit_quadratic_from_sequence(seq):
+    """
+    Given a sequence of weed counts, detect the quadratic
+    and return (a,b,c) for f(n) = an^2 + bn + c
+    """
+
+    # first differences
+    d1 = [seq[i + 1] - seq[i] for i in range(len(seq) - 1)]
+
+    # second differences
+    d2 = [d1[i + 1] - d1[i] for i in range(len(d1) - 1)]
+
+    # find stabilized second difference
+    stable = None
+    for i in range(len(d2) - 3):
+        if d2[i] == d2[i + 1] == d2[i + 2]:
+            stable = d2[i]
+            start = i
+            break
+
+    if stable is None:
+        raise ValueError("Quadratic region not found")
+
+    # quadratic coefficient
+    a = stable / 2
+
+    # choose a stable point
+    n = start + 2
+    y = seq[n]
+
+    # compute b and c
+    # y = a*n^2 + b*n + c
+    # use two equations
+    n2 = n + 1
+    y2 = seq[n2]
+
+    # solve
+    b = (y2 - y) - a * (n2 * n2 - n * n)
+    c = y - a * n * n - b * n
+
+    return a, b, c
 
 
 def part_one():
@@ -262,10 +307,10 @@ def part_two(part_1): # IMPORTANT THAT CHAR MUST BE IN THE MIDDLE BECAUSE IF NOT
             roc_roc_weeds.append((roc_weeds[i] - roc_weeds[i-1]))
 
         roc_roc_weeds = roc_roc_weeds[2:]
-        # roc_weeds = roc_weeds[1:]
+        roc_weeds = roc_weeds[1:]
 
         print(weed_counts) # uncomment to view debug info on weed data
-        # print(roc_weeds)
+        print(roc_weeds)
         print(roc_roc_weeds)
         print(part_1[2],'overlaps')
         print('index', infection_counter)
@@ -286,7 +331,7 @@ def part_two(part_1): # IMPORTANT THAT CHAR MUST BE IN THE MIDDLE BECAUSE IF NOT
         c = a0
 
         actual_days = days - counter
-        # print(a,b,c) # uncomment to view quadratic
+        print(a,b,c) # uncomment to view quadratic
 
         num = a * (actual_days**2) + b*actual_days + c
         p2_counter += num
@@ -295,5 +340,6 @@ def part_two(part_1): # IMPORTANT THAT CHAR MUST BE IN THE MIDDLE BECAUSE IF NOT
 # part_one1 = part_one()
 # weed_count = part_one1[1]
 # print('Part One:',weed_count)
-# print('Part Two:', int(part_two(part_one1)))
+# print('Part Two:', int(part_two(part_one)))
 print(part_one_new(), 'Part One')
+
