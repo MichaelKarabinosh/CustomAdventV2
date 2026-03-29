@@ -1,7 +1,7 @@
 import time
 
 newlines = []
-with open('InputFile', 'r') as file:
+with open('../InputFile', 'r') as file:
     for line in file:
         newlines.append(line.strip("\n"))
 

@@ -118,12 +118,12 @@ for combo in combinations(positions, 3):
 
 
 num_lines = 2024
-with open("InputFile", "r") as f:
+with open("../InputFile", "r") as f:
     lines = f.readlines()
     remaining_lines = lines[num_lines:]
-    with open('InputFile', 'w') as f:
+    with open('../InputFile', 'w') as f:
         f.writelines(remaining_lines)
-with open("InputFile", "a") as f:
+with open("../InputFile", "a") as f:
     for i in range(0,num_lines):
         f.write(create_line_semi(patterns[i]) + "\n")
 # uncomment below to automatically execute code

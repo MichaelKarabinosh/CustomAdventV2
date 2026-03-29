@@ -6,7 +6,7 @@ from math import gcd
 import pprint
 
 newlines = []
-with open('InputFile', 'r') as file:
+with open('../InputFile', 'r') as file:
     for line in file:
         newlines.append(line.strip("\n"))
 
@@ -316,6 +316,7 @@ def part_two(part_1): # IMPORTANT THAT CHAR MUST BE IN THE MIDDLE BECAUSE IF NOT
         print('index', infection_counter)
         infection_counter += 1
         print(max(roc_roc_weeds),'max')
+
 
 
         counter = 0
