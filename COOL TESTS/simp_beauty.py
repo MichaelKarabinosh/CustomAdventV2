@@ -1,15 +1,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
-from matplotlib.widgets import Button, Slider, CheckButtons
+from matplotlib.widgets import Button, Slider
 from matplotlib.colors import ListedColormap
 from matplotlib.patches import Patch
+from pathlib import Path
 
-# ===============================
-# INPUT
-# ===============================
-with open("../InputFile", "r") as f:
-    INPUT_LINES = [line.strip() for line in f if line.strip()]
+INPUT_PATH = Path(__file__).resolve().parent.parent / "InputFile"
 
 # ===============================
 # SIMULATION
@@ -139,98 +136,172 @@ def compute_diffs(data, index):
 # ===============================
 # BUILD SIMULATION
 # ===============================
-# Use first line for grid size and days
-info = INPUT_LINES[0].split("|")
-gridx, gridy = map(int, info[0].strip().split("x"))
-days = int(info[3].strip())
+def read_input_lines():
+    with INPUT_PATH.open("r") as f:
+        return [line.strip() for line in f if line.strip()]
 
-grid = create_grid(gridx, gridy)
 
-# Each weed = (y, x, rel_list)
-weeds = []
+def build_simulation(input_lines):
+    info = input_lines[0].split("|")
+    gridx, gridy = map(int, info[0].strip().split("x"))
+    days = int(info[3].strip())
 
-for line in INPUT_LINES:
-    info = line.split("|")
-    init_x, init_y = map(int, info[1].strip().split(","))
-    rel_list = create_infection(info[2].strip())
+    grid = create_grid(gridx, gridy)
+    weeds = []
 
-    weeds.append((init_y, init_x, rel_list))
-    grid[init_y, init_x] = 1
+    for line in input_lines:
+        info = line.split("|")
+        init_x, init_y = map(int, info[1].strip().split(","))
+        rel_list = create_infection(info[2].strip())
+        weeds.append((init_y, init_x, rel_list))
+        grid[init_y, init_x] = 1
 
-# GUI still expects one center
-center_pos = weeds[0][:2]
+    from collections import defaultdict
 
-from collections import defaultdict
+    initial_pattern_groups = defaultdict(list)
+    for y, x, rel_list in weeds:
+        pattern_key = tuple(sorted(rel_list))
+        initial_pattern_groups[pattern_key].append((y, x))
 
-initial_pattern_groups = defaultdict(list)
-for y, x, rel_list in weeds:
-    pattern_key = tuple(sorted(rel_list))
-    initial_pattern_groups[pattern_key].append((y, x))
+    grids, weed_counts, new_masks, overlap_masks, growth_overlap_masks, pattern_history = simulate(grid, weeds, days)
+    pattern_colors = generate_pattern_colors(initial_pattern_groups)
+    growth_overlap_counts = [int(np.sum(mask)) for mask in growth_overlap_masks]
 
-grids, weed_counts, new_masks, overlap_masks, growth_overlap_masks, pattern_history = simulate(grid, weeds, days)
+    return {
+        "input_lines": input_lines.copy(),
+        "grid_shape": grid.shape,
+        "days": days,
+        "grids": grids,
+        "weed_counts": weed_counts,
+        "growth_overlap_counts": growth_overlap_counts,
+        "pattern_history": pattern_history,
+        "pattern_colors": pattern_colors,
+    }
 
-pattern_colors = generate_pattern_colors(initial_pattern_groups)
 
-growth_overlap_counts = [
-    int(np.sum(mask)) for mask in growth_overlap_masks
-]
+INITIAL_INPUT_LINES = read_input_lines()
+DEFAULT_RENDER_SETTINGS = {
+    "trail_decay": 0.80,
+    "trail_gain": 1.00,
+    "bloom_strength": 1.00,
+    "core_brightness": 1.00,
+}
 
 # ===============================
 # GUI
 # ===============================
-def build_rgba_frame(grid, pattern_groups, pattern_colors, trail):
-
+def build_rgba_frame(grid, pattern_groups, pattern_colors, trail, render_settings):
     h, w = grid.shape
     img = np.zeros((h, w, 4), dtype=float)
-
-    # 🌑 background
     img[:, :, :3] = [0.01, 0.01, 0.03]
     img[:, :, 3] = 1.0
 
-    # ✨ trail decay (balanced)
-    trail *= 0.75
+    trail_decay = render_settings["trail_decay"]
+    trail_gain = render_settings["trail_gain"]
+    bloom_strength = render_settings["bloom_strength"]
+    core_brightness = render_settings["core_brightness"]
+
+    trail *= trail_decay
+
+    yy, xx = np.indices((h, w))
+    screen_pattern = (
+        0.55
+        + 0.25 * np.sin((xx + yy) * 0.9)
+        + 0.20 * np.sin((xx - yy) * 1.15)
+    )
+    screen_pattern = np.clip(screen_pattern, 0.45, 1.0)[..., None]
 
     for pattern_key, positions in pattern_groups.items():
-        color = np.array(pattern_colors.get(pattern_key, [0.3, 0.8, 0.3]))
+        color = np.array(pattern_colors.get(pattern_key, [0.3, 0.8, 0.3]), dtype=float)
+        color = np.clip(color * 1.1 + 0.08, 0, 1)
 
         if not positions:
             continue
 
         pos_arr = np.array(positions, dtype=int)
         ys, xs = pos_arr.T
+        center_y = np.mean(ys)
+        center_x = np.mean(xs)
+        spread_y = max(1.0, np.max(np.abs(ys - center_y)))
+        spread_x = max(1.0, np.max(np.abs(xs - center_x)))
 
-        # 🌟 MAIN DOTS (keep them bright)
-        img[ys, xs, :3] = color
-        img[ys, xs, 3] = 0.9
+        norm_y = (ys - center_y) / spread_y
+        norm_x = (xs - center_x) / spread_x
+        radial = np.sqrt(norm_x * norm_x + norm_y * norm_y)
+        falloff = np.clip(1.12 - radial, 0, 1)
+        falloff = 0.16 + 0.84 * (falloff ** 1.55)
 
-        # ✨ TRAIL (soft accumulation, not too strong)
-        trail[ys, xs, :3] += color * 0.18
+        local_pattern = screen_pattern[ys, xs, 0]
+        fill_strength = (0.20 + 0.62 * falloff) * (0.84 + 0.18 * local_pattern)
+        img[ys, xs, :3] = np.maximum(
+            img[ys, xs, :3],
+            np.clip(color * fill_strength[:, None], 0, 1)
+        )
 
-    # 💡 SOFT GLOW (vectorized, cheap)
-    glow = np.zeros_like(trail)
-    glow[1:, :, :] += trail[:-1, :, :] * 0.25
-    glow[:-1, :, :] += trail[1:, :, :] * 0.25
-    glow[:, 1:, :] += trail[:, :-1, :] * 0.25
-    glow[:, :-1, :] += trail[:, 1:, :] * 0.25
+        hot_strength = np.clip(falloff ** 2.8, 0, 1)
+        trail[ys, xs, :3] += color * trail_gain * (0.05 + 0.16 * hot_strength)[:, None]
 
-    # 🎨 combine everything
-    combined = img[:, :, :3] + trail[:, :, :3] + glow[:, :, :3]
+        core_index = np.argmin((ys - center_y) ** 2 + (xs - center_x) ** 2)
+        cy, cx = ys[core_index], xs[core_index]
+        img[cy, cx, :3] = np.maximum(
+            img[cy, cx, :3],
+            np.clip(color * (1.30 * core_brightness) + 0.20 * core_brightness, 0, 1)
+        )
+        trail[cy, cx, :3] += color * trail_gain * 0.24
 
-    # ⚖️ soft cap (NOT full normalization)
-    combined = np.clip(combined, 0, 1.2)
-    img[:, :, :3] = combined / (1.0 + 0.2 * combined)
+    axial_glow = np.zeros_like(trail)
+    axial_glow[1:, :, :] += trail[:-1, :, :] * 0.32
+    axial_glow[:-1, :, :] += trail[1:, :, :] * 0.32
+    axial_glow[:, 1:, :] += trail[:, :-1, :] * 0.32
+    axial_glow[:, :-1, :] += trail[:, 1:, :] * 0.32
+
+    diagonal_glow = np.zeros_like(trail)
+    diagonal_glow[1:, 1:, :] += trail[:-1, :-1, :] * 0.22
+    diagonal_glow[1:, :-1, :] += trail[:-1, 1:, :] * 0.22
+    diagonal_glow[:-1, 1:, :] += trail[1:, :-1, :] * 0.22
+    diagonal_glow[:-1, :-1, :] += trail[1:, 1:, :] * 0.22
+
+    wide_glow = np.zeros_like(trail)
+    wide_glow[2:, :, :] += trail[:-2, :, :] * 0.16
+    wide_glow[:-2, :, :] += trail[2:, :, :] * 0.16
+    wide_glow[:, 2:, :] += trail[:, :-2, :] * 0.16
+    wide_glow[:, :-2, :] += trail[:, 2:, :] * 0.16
+
+    far_glow = np.zeros_like(trail)
+    far_glow[3:, :, :] += trail[:-3, :, :] * 0.07
+    far_glow[:-3, :, :] += trail[3:, :, :] * 0.07
+    far_glow[:, 3:, :] += trail[:, :-3, :] * 0.07
+    far_glow[:, :-3, :] += trail[:, 3:, :] * 0.07
+
+    bloom = trail * 0.62 + axial_glow + diagonal_glow + wide_glow + far_glow
+    bloom *= bloom_strength
+    bloom = bloom / (1.0 + 0.42 * bloom)
+    textured_bloom = bloom * (0.82 + 0.22 * screen_pattern)
+
+    soft_bloom = np.zeros_like(textured_bloom)
+    soft_bloom[1:, :, :] += textured_bloom[:-1, :, :] * 0.10
+    soft_bloom[:-1, :, :] += textured_bloom[1:, :, :] * 0.10
+    soft_bloom[:, 1:, :] += textured_bloom[:, :-1, :] * 0.10
+    soft_bloom[:, :-1, :] += textured_bloom[:, 1:, :] * 0.10
+
+    combined = img[:, :, :3] + textured_bloom + soft_bloom
+    combined = np.clip(combined, 0, 1.65)
+    img[:, :, :3] = combined / (1.0 + 0.24 * combined)
+    img[:, :, :3] = np.clip(img[:, :, :3], 0, 1)
 
     return img
 
 class InfectionGUI:
     def __init__(self):
+        self.original_input_lines = INITIAL_INPUT_LINES.copy()
+        self.input_mtime = INPUT_PATH.stat().st_mtime
+        self.reload_error = ""
+        self.sim_data = build_simulation(self.original_input_lines)
+        self.render_settings = DEFAULT_RENDER_SETTINGS.copy()
         self.index = 0
         self.running = False
         self.interval = 200
-        self.show_new = False
-        self.show_overlap = False
-        self.show_growth_overlap = False
-        self.trail = np.zeros((grids[0].shape[0], grids[0].shape[1], 4))
+        self.trail = np.zeros((*self.sim_data["grid_shape"], 3))
 
         self.fig = plt.figure(figsize=(16,9))
         # Auto fullscreen (works for most backends)
@@ -258,7 +329,7 @@ class InfectionGUI:
         ])
 
         self.im = self.ax_grid.imshow(
-            np.zeros((grids[0].shape[0], grids[0].shape[1], 4)),
+            np.zeros((*self.sim_data["grid_shape"], 4)),
             interpolation='nearest'
         )
         self.ax_grid.set_xticks([])
@@ -293,34 +364,51 @@ class InfectionGUI:
         self.ax_text_right = self.fig.add_axes([0.83, 0.40, 0.12, 0.14])
         self.ax_text_right.axis("off")
         self.ax_text_right_text = self.ax_text_right.text(0, 0.5, "", fontsize=12)
+        self.ax_status = self.fig.add_axes([0.70, 0.30, 0.25, 0.08])
+        self.ax_status.axis("off")
+        self.status_text = self.ax_status.text(0, 0.8, "", fontsize=10)
 
-        # ===============================
-        # CHECKBOX
-        # ===============================
-        self.ax_check = self.fig.add_axes([0.70, 0.30, 0.25, 0.12])
-        self.check = CheckButtons(
-            self.ax_check,
-            ["Show New", "Show Overlap", "Show Growth Overlap"],
-            [False, False, False]
+        self.ax_art_title = self.fig.add_axes([0.70, 0.23, 0.25, 0.04])
+        self.ax_art_title.axis("off")
+        self.ax_art_title.text(0, 0.5, "Art Controls", fontsize=11, fontweight="bold")
+
+        self.slider_trail_decay = Slider(
+            plt.axes([0.73, 0.19, 0.19, 0.022]),
+            "Decay", 0.60, 0.95, valinit=self.render_settings["trail_decay"]
+        )
+        self.slider_trail_gain = Slider(
+            plt.axes([0.73, 0.16, 0.19, 0.022]),
+            "Gain", 0.40, 2.00, valinit=self.render_settings["trail_gain"]
+        )
+        self.slider_bloom_strength = Slider(
+            plt.axes([0.73, 0.13, 0.19, 0.022]),
+            "Bloom", 0.40, 2.00, valinit=self.render_settings["bloom_strength"]
+        )
+        self.slider_core_brightness = Slider(
+            plt.axes([0.73, 0.10, 0.19, 0.022]),
+            "Core", 0.50, 2.00, valinit=self.render_settings["core_brightness"]
         )
 
         # ===============================
         # CONTROLS
         # ===============================
-        button_y = 0.03
-        button_h = 0.05
+        button_y = 0.035
+        button_h = 0.045
 
-        self.btn_back5 = Button(plt.axes([0.10, button_y, 0.05, button_h]), "<<")
-        self.btn_back1 = Button(plt.axes([0.16, button_y, 0.05, button_h]), "<")
-        self.btn_pause = Button(plt.axes([0.22, button_y, 0.08, button_h]), "Play")
-        self.btn_fwd1  = Button(plt.axes([0.31, button_y, 0.05, button_h]), ">")
-        self.btn_fwd5  = Button(plt.axes([0.37, button_y, 0.05, button_h]), ">>")
-        self.btn_reset = Button(plt.axes([0.44, button_y, 0.08, button_h]), "Reset")
+        self.btn_back5 = Button(plt.axes([0.06, button_y, 0.055, button_h]), "<<")
+        self.btn_back1 = Button(plt.axes([0.125, button_y, 0.055, button_h]), "<")
+        self.btn_pause = Button(plt.axes([0.19, button_y, 0.085, button_h]), "Play")
+        self.btn_fwd1  = Button(plt.axes([0.285, button_y, 0.055, button_h]), ">")
+        self.btn_fwd5  = Button(plt.axes([0.35, button_y, 0.055, button_h]), ">>")
+        self.btn_day0 = Button(plt.axes([0.435, button_y, 0.075, button_h]), "Day 0")
+        self.btn_reload = Button(plt.axes([0.52, button_y, 0.085, button_h]), "Reload")
+        self.btn_restore = Button(plt.axes([0.615, button_y, 0.09, button_h]), "Original")
 
         self.slider = Slider(
-            plt.axes([0.62, button_y, 0.30, button_h]),
-            "Speed (ms)", 10, 1000, valinit=200
+            plt.axes([0.79, button_y, 0.17, button_h]),
+            "Speed", 10, 1000, valinit=200
         )
+        self.slider.label.set_fontsize(11)
 
         # ===============================
         # BINDINGS
@@ -330,10 +418,15 @@ class InfectionGUI:
         self.btn_fwd1.on_clicked(lambda e: self.skip(1))
         self.btn_back5.on_clicked(lambda e: self.skip(-5))
         self.btn_fwd5.on_clicked(lambda e: self.skip(5))
-        self.btn_reset.on_clicked(self.reset)
+        self.btn_day0.on_clicked(self.reset_day)
+        self.btn_reload.on_clicked(self.reload_input)
+        self.btn_restore.on_clicked(self.restore_original)
 
         self.slider.on_changed(self.change_speed)
-        self.check.on_clicked(self.toggle_options)
+        self.slider_trail_decay.on_changed(lambda val: self.change_render_setting("trail_decay", val))
+        self.slider_trail_gain.on_changed(lambda val: self.change_render_setting("trail_gain", val))
+        self.slider_bloom_strength.on_changed(lambda val: self.change_render_setting("bloom_strength", val))
+        self.slider_core_brightness.on_changed(lambda val: self.change_render_setting("core_brightness", val))
 
         self.ani = FuncAnimation(
             self.fig,
@@ -346,61 +439,121 @@ class InfectionGUI:
 
     def toggle(self, event):
         self.running = not self.running
+        if self.running:
+            self.ani.event_source.start()
+        else:
+            self.ani.event_source.stop()
         self.btn_pause.label.set_text("Play" if not self.running else "Pause")
+        self.fig.canvas.draw()
 
     def skip(self, amount):
         self.running = False
-        self.index = max(0, min(len(grids)-1, self.index + amount))
+        self.ani.event_source.stop()
+        self.index = max(0, min(len(self.sim_data["grids"]) - 1, self.index + amount))
+        self.btn_pause.label.set_text("Play")
         self.draw_frame()
 
-    def reset(self, event):
+    def reset_day(self, event):
         self.running = False
+        self.ani.event_source.stop()
         self.index = 0
+        self.btn_pause.label.set_text("Play")
+        self.draw_frame()
+
+    def restore_original(self, event):
+        was_running = self.running
+        self.apply_simulation(build_simulation(self.original_input_lines), restart=True)
+        self.reload_error = "Restored original setup"
+        self.running = was_running
+        if self.running:
+            self.ani.event_source.start()
+        else:
+            self.ani.event_source.stop()
+        self.btn_pause.label.set_text("Play" if not self.running else "Pause")
         self.draw_frame()
 
     def change_speed(self, val):
         self.interval = int(val)
+        self.ani._interval = self.interval
         self.ani.event_source.stop()
-        self.ani = FuncAnimation(
-            self.fig,
-            self.update,
-            interval=self.interval,
-            cache_frame_data=False
-        )
+        self.ani.event_source.interval = self.interval
+        if self.running:
+            self.ani.event_source.start()
+        self.fig.canvas.draw()
 
-    def toggle_options(self, label):
-        status = self.check.get_status()
-        self.show_new = status[0]
-        self.show_overlap = status[1]
-        self.show_growth_overlap = status[2]
+    def change_render_setting(self, key, val):
+        self.render_settings[key] = float(val)
+        self.draw_frame()
+
+    def apply_simulation(self, sim_data, restart=False):
+        current_index = 0 if restart else min(self.index, len(sim_data["grids"]) - 1)
+        self.sim_data = sim_data
+        self.trail = np.zeros((*sim_data["grid_shape"], 3))
+        self.index = current_index
+        self.im.set_data(np.zeros((*sim_data["grid_shape"], 4)))
+        self.ax_grid.set_xlim(-0.5, sim_data["grid_shape"][1] - 0.5)
+        self.ax_grid.set_ylim(sim_data["grid_shape"][0] - 0.5, -0.5)
+        self.ax_plot.cla()
+        self.line, = self.ax_plot.plot([], [])
+        self.ax_plot.set_title("Weed Growth")
+
+    def reload_input(self, event=None):
+        try:
+            input_lines = read_input_lines()
+        except Exception as exc:
+            self.reload_error = f"Reload failed: {exc}"
+            self.draw_frame()
+            return
+
+        if input_lines == self.sim_data["input_lines"]:
+            self.reload_error = "InputFile unchanged"
+            self.draw_frame()
+            return
+
+        try:
+            sim_data = build_simulation(input_lines)
+        except Exception as exc:
+            self.reload_error = f"Reload failed: {exc}"
+            self.draw_frame()
+            return
+
+        self.input_mtime = INPUT_PATH.stat().st_mtime
+        was_running = self.running
+        self.apply_simulation(sim_data)
+        self.running = was_running
+        if self.running:
+            self.ani.event_source.start()
+        else:
+            self.ani.event_source.stop()
+        self.reload_error = "Reloaded InputFile"
+        self.btn_pause.label.set_text("Play" if not self.running else "Pause")
         self.draw_frame()
 
     def draw_frame(self):
-         # reset only at start
-
         img = build_rgba_frame(
-            grids[self.index],
-            pattern_history[self.index],
-            pattern_colors,
-            self.trail
+            self.sim_data["grids"][self.index],
+            self.sim_data["pattern_history"][self.index],
+            self.sim_data["pattern_colors"],
+            self.trail,
+            self.render_settings
         )
 
         self.im.set_data(img)
         self.ax_grid.set_title(f"Day {self.index}")
 
         self.line.set_data(range(self.index + 1),
-                           weed_counts[:self.index + 1])
+                           self.sim_data["weed_counts"][:self.index + 1])
 
         self.ax_plot.set_xlim(0, max(10, self.index + 1))
-        self.ax_plot.set_ylim(0, max(weed_counts[:self.index + 1]) * 1.1)
+        self.ax_plot.set_ylim(0, max(self.sim_data["weed_counts"][:self.index + 1]) * 1.1)
 
-        first, second = compute_diffs(weed_counts, self.index)
+        first, second = compute_diffs(self.sim_data["weed_counts"], self.index)
 
-        go_count = growth_overlap_counts[self.index]
-        go_first, go_second = compute_diffs(growth_overlap_counts, self.index)
+        go_count = self.sim_data["growth_overlap_counts"][self.index]
+        go_first, go_second = compute_diffs(self.sim_data["growth_overlap_counts"], self.index)
 
         left_text = (
-            f"Weeds: {weed_counts[self.index]}\n"
+            f"Weeds: {self.sim_data['weed_counts'][self.index]}\n"
             f"First Diff: {first}\n"
             f"Second Diff: {second}"
         )
@@ -413,11 +566,12 @@ class InfectionGUI:
 
         self.text_display.set_text(left_text)
         self.ax_text_right_text.set_text(right_text)
+        self.status_text.set_text(self.reload_error)
 
-        self.fig.canvas.draw_idle()
+        self.fig.canvas.draw()
 
     def update(self, frame):
-        if not self.running or self.index >= len(grids):
+        if not self.running or self.index >= len(self.sim_data["grids"]):
             return
         self.draw_frame()
         self.index += 1
