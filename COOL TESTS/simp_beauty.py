@@ -35,15 +35,25 @@ def create_infection(pattern):
 
     return relative_list
 
+def generate_pattern_colors(pattern_groups):
+    colors = {}
+    for i, key in enumerate(pattern_groups.keys()):
+        hue = i / max(1, len(pattern_groups))
+        r = 0.5 + 0.5 * np.sin(2*np.pi*hue)
+        g = 0.5 + 0.5 * np.sin(2*np.pi*(hue + 0.33))
+        b = 0.5 + 0.5 * np.sin(2*np.pi*(hue + 0.66))
+        colors[key] = [r, g, b]
+    return colors
+
 
 def simulate(grid, weeds, days):
     grids = []
     weed_counts = []
 
-    # GUI placeholders
     new_masks = []
     overlap_masks = []
     growth_overlap_masks = []
+    pattern_history = []
 
     grids.append(grid.copy())
     weed_counts.append(int(np.sum(grid)))
@@ -57,6 +67,8 @@ def simulate(grid, weeds, days):
     for y, x, rel_list in weeds:
         pattern_key = tuple(sorted(rel_list))
         pattern_groups[pattern_key].append((y, x))
+
+    pattern_history.append({k: v.copy() for k, v in pattern_groups.items()})
 
     for _ in range(days):
         new_grid = grid.copy()
@@ -76,7 +88,6 @@ def simulate(grid, weeds, days):
             for dx, dy in rel_list:
                 shifted = np.roll(mask, shift=(-dy, dx), axis=(0, 1))
 
-                # kill wraparound
                 if dy > 0:
                     shifted[-dy:, :] = False
                 elif dy < 0:
@@ -89,7 +100,6 @@ def simulate(grid, weeds, days):
 
                 growth_mask |= shifted
 
-            # only grow into empty cells
             growth_mask &= (grid == 0)
 
             if np.any(growth_mask):
@@ -98,7 +108,6 @@ def simulate(grid, weeds, days):
                 new_pattern_groups[pattern_key].extend(zip(ys.tolist(), xs.tolist()))
                 new_grid[growth_mask] = 1
 
-            # keep old weeds
             new_pattern_groups[pattern_key].extend(positions)
 
         if not any_growth:
@@ -112,8 +121,9 @@ def simulate(grid, weeds, days):
         new_masks.append(np.zeros_like(grid, dtype=bool))
         overlap_masks.append(np.zeros_like(grid, dtype=bool))
         growth_overlap_masks.append(np.zeros_like(grid, dtype=bool))
+        pattern_history.append({k: v.copy() for k, v in pattern_groups.items()})
 
-    return grids, weed_counts, new_masks, overlap_masks, growth_overlap_masks
+    return grids, weed_counts, new_masks, overlap_masks, growth_overlap_masks, pattern_history
 
 
 def compute_diffs(data, index):
@@ -150,7 +160,16 @@ for line in INPUT_LINES:
 # GUI still expects one center
 center_pos = weeds[0][:2]
 
-grids, weed_counts, new_masks, overlap_masks, growth_overlap_masks = simulate(grid, weeds, days)
+from collections import defaultdict
+
+initial_pattern_groups = defaultdict(list)
+for y, x, rel_list in weeds:
+    pattern_key = tuple(sorted(rel_list))
+    initial_pattern_groups[pattern_key].append((y, x))
+
+grids, weed_counts, new_masks, overlap_masks, growth_overlap_masks, pattern_history = simulate(grid, weeds, days)
+
+pattern_colors = generate_pattern_colors(initial_pattern_groups)
 
 growth_overlap_counts = [
     int(np.sum(mask)) for mask in growth_overlap_masks
@@ -159,6 +178,50 @@ growth_overlap_counts = [
 # ===============================
 # GUI
 # ===============================
+def build_rgba_frame(grid, pattern_groups, pattern_colors, trail):
+
+    h, w = grid.shape
+    img = np.zeros((h, w, 4), dtype=float)
+
+    # 🌑 background
+    img[:, :, :3] = [0.01, 0.01, 0.03]
+    img[:, :, 3] = 1.0
+
+    # ✨ trail decay (balanced)
+    trail *= 0.75
+
+    for pattern_key, positions in pattern_groups.items():
+        color = np.array(pattern_colors.get(pattern_key, [0.3, 0.8, 0.3]))
+
+        if not positions:
+            continue
+
+        pos_arr = np.array(positions, dtype=int)
+        ys, xs = pos_arr.T
+
+        # 🌟 MAIN DOTS (keep them bright)
+        img[ys, xs, :3] = color
+        img[ys, xs, 3] = 0.9
+
+        # ✨ TRAIL (soft accumulation, not too strong)
+        trail[ys, xs, :3] += color * 0.18
+
+    # 💡 SOFT GLOW (vectorized, cheap)
+    glow = np.zeros_like(trail)
+    glow[1:, :, :] += trail[:-1, :, :] * 0.25
+    glow[:-1, :, :] += trail[1:, :, :] * 0.25
+    glow[:, 1:, :] += trail[:, :-1, :] * 0.25
+    glow[:, :-1, :] += trail[:, 1:, :] * 0.25
+
+    # 🎨 combine everything
+    combined = img[:, :, :3] + trail[:, :, :3] + glow[:, :, :3]
+
+    # ⚖️ soft cap (NOT full normalization)
+    combined = np.clip(combined, 0, 1.2)
+    img[:, :, :3] = combined / (1.0 + 0.2 * combined)
+
+    return img
+
 class InfectionGUI:
     def __init__(self):
         self.index = 0
@@ -167,6 +230,7 @@ class InfectionGUI:
         self.show_new = False
         self.show_overlap = False
         self.show_growth_overlap = False
+        self.trail = np.zeros((grids[0].shape[0], grids[0].shape[1], 4))
 
         self.fig = plt.figure(figsize=(16,9))
         # Auto fullscreen (works for most backends)
@@ -193,7 +257,10 @@ class InfectionGUI:
             "#ffffff"  # 5 center
         ])
 
-        self.im = self.ax_grid.imshow(grids[0], cmap=self.cmap, vmin=0, vmax=5)
+        self.im = self.ax_grid.imshow(
+            np.zeros((grids[0].shape[0], grids[0].shape[1], 4)),
+            interpolation='nearest'
+        )
         self.ax_grid.set_xticks([])
         self.ax_grid.set_yticks([])
         self.ax_grid.set_title("Day 0")
@@ -268,7 +335,12 @@ class InfectionGUI:
         self.slider.on_changed(self.change_speed)
         self.check.on_clicked(self.toggle_options)
 
-        self.ani = FuncAnimation(self.fig, self.update, interval=self.interval)
+        self.ani = FuncAnimation(
+            self.fig,
+            self.update,
+            interval=self.interval,
+            cache_frame_data=False
+        )
         self.draw_frame()
         plt.show()
 
@@ -289,7 +361,12 @@ class InfectionGUI:
     def change_speed(self, val):
         self.interval = int(val)
         self.ani.event_source.stop()
-        self.ani = FuncAnimation(self.fig, self.update, interval=self.interval)
+        self.ani = FuncAnimation(
+            self.fig,
+            self.update,
+            interval=self.interval,
+            cache_frame_data=False
+        )
 
     def toggle_options(self, label):
         status = self.check.get_status()
@@ -299,37 +376,23 @@ class InfectionGUI:
         self.draw_frame()
 
     def draw_frame(self):
-        base = np.zeros_like(grids[self.index])
+         # reset only at start
 
-        # Paint all weeds
-        base[grids[self.index] == 1] = 1
+        img = build_rgba_frame(
+            grids[self.index],
+            pattern_history[self.index],
+            pattern_colors,
+            self.trail
+        )
 
-        # Mark center specially
-        cy, cx = center_pos
-        if grids[self.index][cy, cx] == 1:
-            base[cy, cx] = 5
-
-        # New cells (correct definition)
-        if self.show_new and self.index > 0:
-            prev = grids[self.index - 1]
-            curr = grids[self.index]
-            new_cells = (curr == 1) & (prev == 0)
-            base[new_cells] = 2
-
-        if self.show_overlap:
-            base[overlap_masks[self.index]] = 3
-
-        if self.show_growth_overlap:
-            base[growth_overlap_masks[self.index]] = 4
-
-        self.im.set_array(base)
+        self.im.set_data(img)
         self.ax_grid.set_title(f"Day {self.index}")
 
-        self.line.set_data(range(self.index+1),
-                           weed_counts[:self.index+1])
+        self.line.set_data(range(self.index + 1),
+                           weed_counts[:self.index + 1])
 
-        self.ax_plot.set_xlim(0, max(10, self.index+1))
-        self.ax_plot.set_ylim(0, max(weed_counts[:self.index+1]) * 1.1)
+        self.ax_plot.set_xlim(0, max(10, self.index + 1))
+        self.ax_plot.set_ylim(0, max(weed_counts[:self.index + 1]) * 1.1)
 
         first, second = compute_diffs(weed_counts, self.index)
 
