@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from matplotlib.widgets import Button, Slider
-from matplotlib.colors import ListedColormap
+from matplotlib.colors import ListedColormap, to_rgb
 from matplotlib.patches import Patch
 from pathlib import Path
 
@@ -43,6 +43,28 @@ def generate_pattern_colors(pattern_groups):
     return colors
 
 
+def parse_optional_color(token):
+    token = token.strip()
+    lowered = token.lower()
+    if not token:
+        return None
+    if lowered.startswith("color="):
+        token = token.split("=", 1)[1].strip()
+    try:
+        return list(to_rgb(token))
+    except ValueError:
+        return None
+
+
+def assign_infection_colors(weeds):
+    auto_ids = [weed["id"] for weed in weeds if weed["color"] is None]
+    auto_colors = generate_pattern_colors({weed_id: [] for weed_id in auto_ids})
+    colors = {}
+    for weed in weeds:
+        colors[weed["id"]] = weed["color"] if weed["color"] is not None else auto_colors[weed["id"]]
+    return colors
+
+
 def simulate(grid, weeds, days):
     grids = []
     weed_counts = []
@@ -50,7 +72,7 @@ def simulate(grid, weeds, days):
     new_masks = []
     overlap_masks = []
     growth_overlap_masks = []
-    pattern_history = []
+    group_history = []
 
     grids.append(grid.copy())
     weed_counts.append(int(np.sum(grid)))
@@ -58,22 +80,32 @@ def simulate(grid, weeds, days):
     overlap_masks.append(np.zeros_like(grid, dtype=bool))
     growth_overlap_masks.append(np.zeros_like(grid, dtype=bool))
 
-    from collections import defaultdict
-    pattern_groups = defaultdict(list)
+    pattern_groups = {}
 
-    for y, x, rel_list in weeds:
-        pattern_key = tuple(sorted(rel_list))
-        pattern_groups[pattern_key].append((y, x))
+    for weed in weeds:
+        pattern_groups[weed["id"]] = {
+            "positions": [(weed["y"], weed["x"])],
+            "rel_list": weed["rel_list"],
+            "lifespan": weed["lifespan"],
+            "color": weed["resolved_color"],
+        }
 
-    pattern_history.append({k: v.copy() for k, v in pattern_groups.items()})
+    group_history.append({
+        group_id: {
+            "positions": data["positions"].copy(),
+            "color": data["color"],
+        }
+        for group_id, data in pattern_groups.items()
+    })
 
-    for _ in range(days):
+    for day_index in range(days):
         new_grid = grid.copy()
         any_growth = False
-        new_pattern_groups = defaultdict(list)
+        new_pattern_groups = {}
 
-        for pattern_key, positions in pattern_groups.items():
-            rel_list = list(pattern_key)
+        for group_id, group_data in pattern_groups.items():
+            positions = group_data["positions"]
+            rel_list = group_data["rel_list"]
 
             mask = np.zeros_like(grid, dtype=bool)
             pos_arr = np.array(positions, dtype=int)
@@ -81,31 +113,38 @@ def simulate(grid, weeds, days):
             mask[ys, xs] = True
 
             growth_mask = np.zeros_like(grid, dtype=bool)
+            new_positions = []
 
-            for dx, dy in rel_list:
-                shifted = np.roll(mask, shift=(-dy, dx), axis=(0, 1))
+            if day_index < group_data["lifespan"]:
+                for dx, dy in rel_list:
+                    shifted = np.roll(mask, shift=(-dy, dx), axis=(0, 1))
 
-                if dy > 0:
-                    shifted[-dy:, :] = False
-                elif dy < 0:
-                    shifted[:(-dy), :] = False
+                    if dy > 0:
+                        shifted[-dy:, :] = False
+                    elif dy < 0:
+                        shifted[:(-dy), :] = False
 
-                if dx > 0:
-                    shifted[:, :dx] = False
-                elif dx < 0:
-                    shifted[:, dx:] = False
+                    if dx > 0:
+                        shifted[:, :dx] = False
+                    elif dx < 0:
+                        shifted[:, dx:] = False
 
-                growth_mask |= shifted
+                    growth_mask |= shifted
 
-            growth_mask &= (grid == 0)
+                growth_mask &= (grid == 0)
 
-            if np.any(growth_mask):
-                any_growth = True
-                ys, xs = np.where(growth_mask)
-                new_pattern_groups[pattern_key].extend(zip(ys.tolist(), xs.tolist()))
-                new_grid[growth_mask] = 1
+                if np.any(growth_mask):
+                    any_growth = True
+                    ys, xs = np.where(growth_mask)
+                    new_positions = list(zip(ys.tolist(), xs.tolist()))
+                    new_grid[growth_mask] = 1
 
-            new_pattern_groups[pattern_key].extend(positions)
+            new_pattern_groups[group_id] = {
+                "positions": positions + new_positions,
+                "rel_list": rel_list,
+                "lifespan": group_data["lifespan"],
+                "color": group_data["color"],
+            }
 
         if not any_growth:
             break
@@ -118,9 +157,15 @@ def simulate(grid, weeds, days):
         new_masks.append(np.zeros_like(grid, dtype=bool))
         overlap_masks.append(np.zeros_like(grid, dtype=bool))
         growth_overlap_masks.append(np.zeros_like(grid, dtype=bool))
-        pattern_history.append({k: v.copy() for k, v in pattern_groups.items()})
+        group_history.append({
+            group_id: {
+                "positions": data["positions"].copy(),
+                "color": data["color"],
+            }
+            for group_id, data in pattern_groups.items()
+        })
 
-    return grids, weed_counts, new_masks, overlap_masks, growth_overlap_masks, pattern_history
+    return grids, weed_counts, new_masks, overlap_masks, growth_overlap_masks, group_history
 
 
 def compute_diffs(data, index):
@@ -144,27 +189,38 @@ def read_input_lines():
 def build_simulation(input_lines):
     info = input_lines[0].split("|")
     gridx, gridy = map(int, info[0].strip().split("x"))
-    days = int(info[3].strip())
 
     grid = create_grid(gridx, gridy)
     weeds = []
 
-    for line in input_lines:
-        info = line.split("|")
-        init_x, init_y = map(int, info[1].strip().split(","))
-        rel_list = create_infection(info[2].strip())
-        weeds.append((init_y, init_x, rel_list))
+    for weed_id, line in enumerate(input_lines):
+        info = [part.strip() for part in line.split("|")]
+        init_x, init_y = map(int, info[1].split(","))
+        rel_list = create_infection(info[2])
+        lifespan = int(info[3])
+        color = None
+
+        for token in info[4:]:
+            parsed_color = parse_optional_color(token)
+            if parsed_color is not None:
+                color = parsed_color
+
+        weeds.append({
+            "id": weed_id,
+            "y": init_y,
+            "x": init_x,
+            "rel_list": rel_list,
+            "lifespan": lifespan,
+            "color": color,
+        })
         grid[init_y, init_x] = 1
 
-    from collections import defaultdict
+    resolved_colors = assign_infection_colors(weeds)
+    for weed in weeds:
+        weed["resolved_color"] = resolved_colors[weed["id"]]
 
-    initial_pattern_groups = defaultdict(list)
-    for y, x, rel_list in weeds:
-        pattern_key = tuple(sorted(rel_list))
-        initial_pattern_groups[pattern_key].append((y, x))
-
+    days = max((weed["lifespan"] for weed in weeds), default=0)
     grids, weed_counts, new_masks, overlap_masks, growth_overlap_masks, pattern_history = simulate(grid, weeds, days)
-    pattern_colors = generate_pattern_colors(initial_pattern_groups)
     growth_overlap_counts = [int(np.sum(mask)) for mask in growth_overlap_masks]
 
     return {
@@ -175,7 +231,6 @@ def build_simulation(input_lines):
         "weed_counts": weed_counts,
         "growth_overlap_counts": growth_overlap_counts,
         "pattern_history": pattern_history,
-        "pattern_colors": pattern_colors,
     }
 
 
@@ -185,21 +240,27 @@ DEFAULT_RENDER_SETTINGS = {
     "trail_gain": 1.00,
     "bloom_strength": 1.00,
     "core_brightness": 1.00,
+    "global_opacity": 1.00,
+    "background_mode": "black",
 }
 
 # ===============================
 # GUI
 # ===============================
-def build_rgba_frame(grid, pattern_groups, pattern_colors, trail, render_settings):
+def build_rgba_frame(grid, pattern_groups, trail, render_settings):
     h, w = grid.shape
     img = np.zeros((h, w, 4), dtype=float)
-    img[:, :, :3] = [0.01, 0.01, 0.03]
+    background_mode = render_settings["background_mode"]
+    background_rgb = np.array([1.0, 1.0, 1.0] if background_mode == "white" else [0.01, 0.01, 0.03], dtype=float)
+    img[:, :, :3] = background_rgb
     img[:, :, 3] = 1.0
+    paint_layer = np.zeros((h, w, 3), dtype=float)
 
     trail_decay = render_settings["trail_decay"]
     trail_gain = render_settings["trail_gain"]
     bloom_strength = render_settings["bloom_strength"]
     core_brightness = render_settings["core_brightness"]
+    global_opacity = render_settings["global_opacity"]
 
     trail *= trail_decay
 
@@ -211,10 +272,12 @@ def build_rgba_frame(grid, pattern_groups, pattern_colors, trail, render_setting
     )
     screen_pattern = np.clip(screen_pattern, 0.45, 1.0)[..., None]
 
-    for pattern_key, positions in pattern_groups.items():
-        color = np.array(pattern_colors.get(pattern_key, [0.3, 0.8, 0.3]), dtype=float)
+    for group_data in pattern_groups.values():
+        color = np.array(group_data["color"], dtype=float)
+        opacity = global_opacity
         color = np.clip(color * 1.1 + 0.08, 0, 1)
 
+        positions = group_data["positions"]
         if not positions:
             continue
 
@@ -233,21 +296,21 @@ def build_rgba_frame(grid, pattern_groups, pattern_colors, trail, render_setting
 
         local_pattern = screen_pattern[ys, xs, 0]
         fill_strength = (0.20 + 0.62 * falloff) * (0.84 + 0.18 * local_pattern)
-        img[ys, xs, :3] = np.maximum(
-            img[ys, xs, :3],
-            np.clip(color * fill_strength[:, None], 0, 1)
+        paint_layer[ys, xs, :3] = np.maximum(
+            paint_layer[ys, xs, :3],
+            np.clip(color * opacity * fill_strength[:, None], 0, 1)
         )
 
         hot_strength = np.clip(falloff ** 2.8, 0, 1)
-        trail[ys, xs, :3] += color * trail_gain * (0.05 + 0.16 * hot_strength)[:, None]
+        trail[ys, xs, :3] += color * opacity * trail_gain * (0.05 + 0.16 * hot_strength)[:, None]
 
         core_index = np.argmin((ys - center_y) ** 2 + (xs - center_x) ** 2)
         cy, cx = ys[core_index], xs[core_index]
-        img[cy, cx, :3] = np.maximum(
-            img[cy, cx, :3],
-            np.clip(color * (1.30 * core_brightness) + 0.20 * core_brightness, 0, 1)
+        paint_layer[cy, cx, :3] = np.maximum(
+            paint_layer[cy, cx, :3],
+            np.clip(color * opacity * (1.30 * core_brightness) + 0.20 * core_brightness * opacity, 0, 1)
         )
-        trail[cy, cx, :3] += color * trail_gain * 0.24
+        trail[cy, cx, :3] += color * opacity * trail_gain * 0.24
 
     axial_glow = np.zeros_like(trail)
     axial_glow[1:, :, :] += trail[:-1, :, :] * 0.32
@@ -284,10 +347,15 @@ def build_rgba_frame(grid, pattern_groups, pattern_colors, trail, render_setting
     soft_bloom[:, 1:, :] += textured_bloom[:, :-1, :] * 0.10
     soft_bloom[:, :-1, :] += textured_bloom[:, 1:, :] * 0.10
 
-    combined = img[:, :, :3] + textured_bloom + soft_bloom
-    combined = np.clip(combined, 0, 1.65)
-    img[:, :, :3] = combined / (1.0 + 0.24 * combined)
-    img[:, :, :3] = np.clip(img[:, :, :3], 0, 1)
+    art_layer = paint_layer + textured_bloom + soft_bloom
+    art_layer = np.clip(art_layer, 0, 1.65)
+    art_layer = art_layer / (1.0 + 0.24 * art_layer)
+
+    if background_mode == "white":
+        alpha = np.clip(np.max(art_layer, axis=2, keepdims=True) * 0.95, 0, 0.95)
+        img[:, :, :3] = background_rgb * (1.0 - alpha) + art_layer * alpha
+    else:
+        img[:, :, :3] = np.clip(background_rgb + art_layer, 0, 1)
 
     return img
 
@@ -368,31 +436,36 @@ class InfectionGUI:
         self.ax_status.axis("off")
         self.status_text = self.ax_status.text(0, 0.8, "", fontsize=10)
 
-        self.ax_art_title = self.fig.add_axes([0.70, 0.23, 0.25, 0.04])
+        self.ax_art_title = self.fig.add_axes([0.70, 0.26, 0.25, 0.04])
         self.ax_art_title.axis("off")
         self.ax_art_title.text(0, 0.5, "Art Controls", fontsize=11, fontweight="bold")
 
         self.slider_trail_decay = Slider(
-            plt.axes([0.73, 0.19, 0.19, 0.022]),
+            plt.axes([0.73, 0.22, 0.19, 0.022]),
             "Decay", 0.60, 0.95, valinit=self.render_settings["trail_decay"]
         )
         self.slider_trail_gain = Slider(
-            plt.axes([0.73, 0.16, 0.19, 0.022]),
+            plt.axes([0.73, 0.19, 0.19, 0.022]),
             "Gain", 0.40, 2.00, valinit=self.render_settings["trail_gain"]
         )
         self.slider_bloom_strength = Slider(
-            plt.axes([0.73, 0.13, 0.19, 0.022]),
+            plt.axes([0.73, 0.16, 0.19, 0.022]),
             "Bloom", 0.40, 2.00, valinit=self.render_settings["bloom_strength"]
         )
         self.slider_core_brightness = Slider(
-            plt.axes([0.73, 0.10, 0.19, 0.022]),
+            plt.axes([0.73, 0.13, 0.19, 0.022]),
             "Core", 0.50, 2.00, valinit=self.render_settings["core_brightness"]
         )
+        self.slider_global_opacity = Slider(
+            plt.axes([0.73, 0.10, 0.19, 0.022]),
+            "Opacity", 0.10, 1.00, valinit=self.render_settings["global_opacity"]
+        )
+        self.btn_background = Button(plt.axes([0.73, 0.062, 0.19, 0.028]), "Background: Dark")
 
         # ===============================
         # CONTROLS
         # ===============================
-        button_y = 0.035
+        button_y = 0.015
         button_h = 0.045
 
         self.btn_back5 = Button(plt.axes([0.06, button_y, 0.055, button_h]), "<<")
@@ -400,7 +473,7 @@ class InfectionGUI:
         self.btn_pause = Button(plt.axes([0.19, button_y, 0.085, button_h]), "Play")
         self.btn_fwd1  = Button(plt.axes([0.285, button_y, 0.055, button_h]), ">")
         self.btn_fwd5  = Button(plt.axes([0.35, button_y, 0.055, button_h]), ">>")
-        self.btn_day0 = Button(plt.axes([0.435, button_y, 0.075, button_h]), "Day 0")
+        self.btn_soften = Button(plt.axes([0.435, button_y, 0.075, button_h]), "Soften")
         self.btn_reload = Button(plt.axes([0.52, button_y, 0.085, button_h]), "Reload")
         self.btn_restore = Button(plt.axes([0.615, button_y, 0.09, button_h]), "Original")
 
@@ -418,7 +491,7 @@ class InfectionGUI:
         self.btn_fwd1.on_clicked(lambda e: self.skip(1))
         self.btn_back5.on_clicked(lambda e: self.skip(-5))
         self.btn_fwd5.on_clicked(lambda e: self.skip(5))
-        self.btn_day0.on_clicked(self.reset_day)
+        self.btn_soften.on_clicked(self.soften_frame)
         self.btn_reload.on_clicked(self.reload_input)
         self.btn_restore.on_clicked(self.restore_original)
 
@@ -427,6 +500,8 @@ class InfectionGUI:
         self.slider_trail_gain.on_changed(lambda val: self.change_render_setting("trail_gain", val))
         self.slider_bloom_strength.on_changed(lambda val: self.change_render_setting("bloom_strength", val))
         self.slider_core_brightness.on_changed(lambda val: self.change_render_setting("core_brightness", val))
+        self.slider_global_opacity.on_changed(lambda val: self.change_render_setting("global_opacity", val))
+        self.btn_background.on_clicked(self.toggle_background)
 
         self.ani = FuncAnimation(
             self.fig,
@@ -453,11 +528,11 @@ class InfectionGUI:
         self.btn_pause.label.set_text("Play")
         self.draw_frame()
 
-    def reset_day(self, event):
+    def soften_frame(self, event):
         self.running = False
         self.ani.event_source.stop()
-        self.index = 0
         self.btn_pause.label.set_text("Play")
+        self.trail *= 0.45
         self.draw_frame()
 
     def restore_original(self, event):
@@ -483,6 +558,15 @@ class InfectionGUI:
 
     def change_render_setting(self, key, val):
         self.render_settings[key] = float(val)
+        self.draw_frame()
+
+    def toggle_background(self, event):
+        self.render_settings["background_mode"] = (
+            "white" if self.render_settings["background_mode"] == "black" else "black"
+        )
+        self.btn_background.label.set_text(
+            "Background: White" if self.render_settings["background_mode"] == "white" else "Background: Dark"
+        )
         self.draw_frame()
 
     def apply_simulation(self, sim_data, restart=False):
@@ -533,7 +617,6 @@ class InfectionGUI:
         img = build_rgba_frame(
             self.sim_data["grids"][self.index],
             self.sim_data["pattern_history"][self.index],
-            self.sim_data["pattern_colors"],
             self.trail,
             self.render_settings
         )
