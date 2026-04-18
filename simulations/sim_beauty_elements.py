@@ -15,7 +15,27 @@ def create_grid(x, y):
     return np.zeros((y, x), dtype=int)
 
 def create_infection(pattern):
+    pattern = pattern.strip()
     relative_list = []
+    if not pattern:
+        return relative_list
+
+    # Coordinate-list format: "1,0 0,1 -1,0 0,-1"
+    coord_tokens = pattern.split()
+    looks_like_coordinate_list = (
+        "W" not in pattern
+        and (
+            len(coord_tokens) > 1
+            or any(ch not in "01," for ch in pattern)
+            or len(pattern.split(",")) == 2
+        )
+    )
+    if looks_like_coordinate_list:
+        for token in coord_tokens:
+            dx_str, dy_str = token.split(",")
+            relative_list.append((int(dx_str), int(dy_str)))
+        return relative_list
+
     lines = pattern.split(",")
     cx = cy = 0
 
